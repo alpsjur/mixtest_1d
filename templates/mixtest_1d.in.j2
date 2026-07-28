@@ -222,7 +222,7 @@ ad_VolCons(north) ==  F                            ! northern boundary
 ! Time-Stepping parameters.
 
       NTIMES == {{ time_stepping.NTIMES }}
-          DT == 40.0d0
+          DT == {{ time_stepping.DT }}d0
      NDTFAST == 20
 
 ! Number of timesteps for computing observation impacts during the
@@ -259,7 +259,7 @@ ad_VolCons(north) ==  F                            ! northern boundary
 ! Output history, quicksave, average, and diagnostic files parameters.
 
      LDEFOUT == T
-        NHIS == 90
+        NHIS == {{ time_stepping.NHIS }}
      NDEFHIS == 0
         NQCK == 0
      NDEFQCK == 0

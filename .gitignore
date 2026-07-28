@@ -216,3 +216,16 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+
+# data files
+runs/*
+sweeps/*
+*.nc
+
+# figures 
+figures/*
+
+# ROMS
+Build_roms
+romsS*

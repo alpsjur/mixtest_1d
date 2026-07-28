@@ -10,6 +10,7 @@ io:
 files:
   grd: mixtest_1d_grd.nc
   ini: mixtest_1d_ini.nc
+  his: mixtest_1d_his.nc
 
 grid:
   Lm: 10
@@ -42,6 +43,8 @@ vertical:
 
 time_stepping:
   NTIMES: 30240  # 60480 for month, 15120 for week, 2160 for day
+  DT: 40.0
+  NHIS: 90
 
 phys:
   F0: 0       # Coriolis (s^-1)
