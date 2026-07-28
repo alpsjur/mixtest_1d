@@ -1,0 +1,5 @@
+run:
+  name: gen_nostr
+
+structure:
+  str_a: 0.0

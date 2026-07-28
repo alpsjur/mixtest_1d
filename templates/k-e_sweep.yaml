@@ -1,0 +1,13 @@
+sweep:
+  id: k-e_variations of baseline
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/k-e_nostr.yaml
+
+  parameters:
+    #structure.str_a: [0.0001]
+    #structure.BFRC_U: [3.15]
+    structure.c4: [0.6, 1.4]
+
+  run_name_template: "k-e_c4{structure.c4}"
+
+  output_dir: "sweeps/k-e_variations"
