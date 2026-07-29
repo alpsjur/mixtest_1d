@@ -8,7 +8,7 @@ def analytical_u(F, str_a, Cd, t):
     return np.sqrt(F/alpha)*np.tanh(t*np.sqrt(F*alpha))
 
 
-experimentpath = "runs/test_STRUCTURE_MIXING"
+experimentpath = "runs/test_STRUCTURE_DRAG"
 params = load_yaml(f"{experimentpath}/resolved_config.yaml")
 
 # Analytical solution for u
@@ -65,4 +65,4 @@ ax.text(0.5, 0.1, r'$u(t) = \sqrt{\frac{F}{\alpha}} \tanh(t \sqrt{F \alpha}),\qu
         transform=ax.transAxes, fontsize=12, verticalalignment='bottom', 
         horizontalalignment='center')
 
-fig.savefig(f"figures/test_STRUCTURE_MIXING.png")
+fig.savefig(f"figures/test_STRUCTURE_DRAG.png")
