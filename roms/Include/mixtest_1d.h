@@ -31,14 +31,14 @@
 #undef SPLINES_VVISC      /* splines reconstruction of vertical viscosity */
 #undef SPLINES_VDIFF      /* splines reconstruction of vertical diffusion */
 
-#define LIMIT_VDIFF         /* do not impose an upper limit on vertical diffusion */
-#define LIMIT_VVISC         /* do not impose an upper limit on vertical viscosity */
+#undef LIMIT_VDIFF         /* do not impose an upper limit on vertical diffusion */
+#undef LIMIT_VVISC         /* do not impose an upper limit on vertical viscosity */
 
 #define GLS_MIXING
 #define N2S2_HORAVG       /* Activate horizontal smoothing of buoyancy/shear */
-#define CRAIG_BANNER      /* Craig and Banner wave breaking surface flux */
+#undef CRAIG_BANNER       /* Craig and Banner wave breaking surface flux */
 #define CANUTO_A          /* Canuto A-stability function formulation */
-#define CHARNOK           /* Charnok surface roughness from wind stress */
+#undef CHARNOK            /* Charnok surface roughness from wind stress */
 #undef  K_C4ADVECTION
 
 
