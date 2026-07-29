@@ -41,22 +41,23 @@ print("Simulated u is equal to analytical u for all grid points with 1e-4 tolera
 
 
 # Also plot the analytical and numerical solutions for visual inspection
-fig, ax = plt.subplots(figsize=(10, 6))
+fig, ax = plt.subplots(figsize=(6, 4))
 th = t/(60*60)
 
 # Plot the analytical solution
-ax.plot(th, u_analytical, label='Analytical Solution', color='blue', linewidth=2)
+ax.plot(th, u_analytical, label='Analytical solution', color='blue', linewidth=2)
 
 # Plot the numerical solution with spread
 u_simulation_mean = np.mean(u_simulation, axis=(1, 2, 3))
 ax.plot(th, u_simulation_mean, 
-        label='Numerical Solution (averaged over all points)', color='orange', linestyle='--', linewidth=2)
-u_simulation_std = np.std(u_simulation, axis=(1, 2, 3))
-ax.fill_between(th, u_simulation_mean - u_simulation_std, u_simulation_mean + u_simulation_std, 
-                color='orange', alpha=0.2, label='Numerical solution spread (1 std dev)')
+        label='Numerical solution,\ndomain mean', color='orange', linestyle='--', linewidth=2)
+u_simulation_max = np.max(u_simulation, axis=(1, 2, 3))
+u_simulation_min = np.min(u_simulation, axis=(1, 2, 3))
+ax.fill_between(th, u_simulation_min, u_simulation_max, 
+                color='orange', alpha=0.2, label='Numerical solution\ndomain spread')
 ax.set_xlabel('Time (hours)')
 ax.set_ylabel('u (m/s)')
-ax.set_title('Comparison of analytical and numerical solutions for u given a constant body force and structure drag')
+ax.set_title('Comparison of analytical and numerical solutions for\nu given a constant body force and structure drag')
 ax.legend()
 ax.grid()
 
