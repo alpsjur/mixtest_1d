@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-tools/run_sweep_sims.py
+tools/run_sweep.py
 
 Run all ROMS simulations listed in a sweep manifest (manifest.yaml).
 - Uses tools/run_single.py to execute each simulation.
@@ -8,12 +8,13 @@ Run all ROMS simulations listed in a sweep manifest (manifest.yaml).
 - Updates the sweep manifest (YAML + CSV) with status, return code, log path, and status file.
 
 Usage:
-  python tools/run_sweep_sims.py sweeps/<sweep_id>/manifest.yaml
+  python tools/run_sweep.py sweeps/<sweep_id>/manifest.yaml
 """
 
 import os
 import sys
 import yaml
+import csv
 from typing import List, Dict
 
 # Ensure project root is importable when called from tools/
@@ -22,7 +23,7 @@ ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from tools.run_experiment import run_single_resolved  # reuse the fixed-exec single-runner
+from tools.run_experiment import run_single_resolved
 
 
 def load_yaml(path: str) -> dict:
@@ -65,7 +66,9 @@ def run_from_manifest(manifest_yaml_path: str) -> None:
     runs = manifest.get("runs", [])
     sweep_dir = os.path.dirname(os.path.abspath(manifest_yaml_path))
     csv_path = os.path.join(sweep_dir, "manifest.csv")
-
+    #         print(f"[{i}/{total}] Skipping (missing resolved_config): {run_name}")
+    sweep_id = os.path.basename(sweep_dir)
+    print(f"Running sweep from {sweep_id}")
     total = len(runs)
     for i, row in enumerate(runs, start=1):
         run_name = row.get("run_name", "<unnamed>")
@@ -101,7 +104,7 @@ def run_from_manifest(manifest_yaml_path: str) -> None:
 
 def main():
     if len(sys.argv) != 2:
-        print("Usage: python tools/run_sweep_sims.py sweeps/<sweep_id>/manifest.yaml", file=sys.stderr)
+        print("Usage: python tools/run_sweep.py sweeps/<sweep_id>/manifest.yaml", file=sys.stderr)
         sys.exit(1)
     run_from_manifest(sys.argv[1])
 
