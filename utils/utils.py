@@ -125,59 +125,40 @@ def load_yaml(path: str) -> dict:
 
 def prep_ds(ds, params):
     """
-    Prepare dataset and xgcm Grid with correct vertical metrics for volume integrals.
+    Prepare dataset and xgcm Grid with correct vertical and horizontal metrics.
 
-    Steps:
-    - Rename dims to xgcm-friendly names (rho/u/v/psi alignment)
-    - Build xgcm Grid
-    - Compute z_rho and z_w from bathymetry and vertical params
-    - Add z-coordinates to ds
-    - Interpolate horizontal metrics to u, v, psi points and compute dx/dy
-    - Compute dz (rho thickness) and dz_w (dual thickness at w points) correctly
-    - Build complete metrics dict and re-create the Grid
-
-    Parameters
-    ----------
-    ds : xarray.Dataset
-        ROMS dataset with h, pm, pn, and standard ROMS grid dims/coords.
-    params : dict
-        {
-          'vertical': {
-              'HC': float, 'THETA_S': float, 'THETA_B': float
-          },
-          'grid': {'N': int}
-        }
+    Adds:
+      - z_rho, z_w
+      - dx/dy at rho, u, v, psi
+      - dz at rho (layer thickness) and dual dz_w at w
+      - dA at rho, and dA_u/dA_v/dA_psi at staggered points
+      - 3D volume metrics dV, dV_u, dV_v, dV_w
 
     Returns
     -------
     ds : xarray.Dataset
-        Dataset augmented with z_rho, z_w, dx/dy, dz, dz_w and their u/v/psi variants.
     grid : xgcm.Grid
-        Grid object configured with the correct metrics.
     """
-    # 1) Rename dims that match
+    # 1) Rename dims if necessary (only those present)
     rename_map = {
         'eta_u': 'eta_rho',
         'xi_v': 'xi_rho',
         'xi_psi': 'xi_u',
         'eta_psi': 'eta_v',
     }
-    existing = {k: v for k, v in rename_map.items() if k in ds.dims}
-    if existing:
-        ds = ds.rename(existing)
+    ds = ds.rename({k: v for k, v in rename_map.items() if k in ds.dims})
 
-    # 2) Define coords mapping for xgcm
+    # 2) Axis mapping for xgcm
     coords = {
         'X': {'center': 'xi_rho', 'inner': 'xi_u'},
         'Y': {'center': 'eta_rho', 'inner': 'eta_v'},
         'Z': {'center': 's_rho',  'outer': 's_w'},
     }
 
-    # 3) Create a provisional Grid (no metrics yet)
+    # 3) Provisional grid (no metrics yet)
     grid = xgcm.Grid(ds, coords=coords, autoparse_metadata=False, padding='periodic')
 
-    # 4) Compute vertical coordinates (z-levels) at rho and w points
-    # Assumes compute_depths returns z_r (s_rho, eta_rho, xi_rho) and z_w (s_w, eta_rho, xi_rho)
+    # 4) Vertical coordinates
     z_r, z_w = compute_depths(
         ds.isel(ocean_time=0).h.squeeze().values,
         params['vertical']['HC'],
@@ -186,13 +167,12 @@ def prep_ds(ds, params):
         params['grid']['N'],
     )
 
-    # 5) Add z-coordinates to dataset
     ds = ds.assign_coords(
         z_w=(('s_w', 'eta_rho', 'xi_rho'), z_w),
         z_rho=(('s_rho', 'eta_rho', 'xi_rho'), z_r),
     )
 
-    # 6) Interpolate horizontal metrics to u, v, and psi points
+    # 5) Horizontal metrics at staggered points
     ds['pm_v']   = grid.interp(ds.pm, 'Y')
     ds['pn_u']   = grid.interp(ds.pn, 'X')
     ds['pm_u']   = grid.interp(ds.pm, 'X')
@@ -200,7 +180,6 @@ def prep_ds(ds, params):
     ds['pm_psi'] = grid.interp(grid.interp(ds.pm, 'Y'), 'X')
     ds['pn_psi'] = grid.interp(grid.interp(ds.pn, 'X'), 'Y')
 
-    # 7) Horizontal grid spacings
     ds['dx']      = 1.0 / ds.pm
     ds['dx_u']    = 1.0 / ds.pm_u
     ds['dx_v']    = 1.0 / ds.pm_v
@@ -211,41 +190,45 @@ def prep_ds(ds, params):
     ds['dy_v']    = 1.0 / ds.pn_v
     ds['dy_psi']  = 1.0 / ds.pn_psi
 
-    # 8) Vertical metrics
-    # 8a) Layer thickness at rho points (N layers), computed from z_w
-    # grid.diff(z_w,'Z') returns differences between outer (w) to center (rho), i.e. dz at s_rho
+    # 6) Vertical metrics
+    # 6a) rho-layer thickness (positive)
     dz_rho = grid.diff(ds.z_w, 'Z')  # (s_rho, eta_rho, xi_rho)
-    # Make thickness positive regardless of z sign convention
     dz_rho = abs(dz_rho)
-    ds['dz'] = dz_rho  # thickness for rho-centered fields
+    ds['dz'] = dz_rho
 
-    # 8b) Dual-cell thickness at w points for w-centered fields
-    # Interpolate dz (rho) to w, then halve the end points
+    # 6b) dual thickness at w (positive): average dz to w and half endpoints
     dz_w = grid.interp(ds['dz'], 'Z', padding='extend')  # (s_w, eta_rho, xi_rho)
-    # Halve top and bottom control volumes using a 1D weight along s_w
     w_s = xr.DataArray(np.ones(dz_w.sizes['s_w']), dims=['s_w'])
     w_s[0]  = 0.5
     w_s[-1] = 0.5
     dz_w = dz_w * w_s
     ds['dz_w'] = dz_w
 
-    # Also build u/v versions
+    # u/v variants
     ds['dz_u']   = grid.interp(ds['dz'],   'X')
     ds['dz_v']   = grid.interp(ds['dz'],   'Y')
     ds['dz_w_u'] = grid.interp(ds['dz_w'], 'X')
     ds['dz_w_v'] = grid.interp(ds['dz_w'], 'Y')
 
-    # 9) Cell area at rho points (and can interpolate as needed)
-    ds['dA'] = ds['dx'] * ds['dy']
+    # 7) 2D areas at all staggered points
+    ds['dA']     = ds['dx']     * ds['dy']
+    ds['dA_u']   = ds['dx_u']   * ds['dy_u']
+    ds['dA_v']   = ds['dx_v']   * ds['dy_v']
+    ds['dA_psi'] = ds['dx_psi'] * ds['dy_psi']
 
-    # 10) Define metrics and re-create the Grid with metrics
+    # 8) Optional: 3D volumes (helpful for explicit weighting)
+    ds['dV']   = ds['dA']   * ds['dz']
+    ds['dV_u'] = ds['dA_u'] * ds['dz_u']
+    ds['dV_v'] = ds['dA_v'] * ds['dz_v']
+    ds['dV_w'] = ds['dA']   * ds['dz_w']  # area at rho, thickness at w
+
+    # 9) Metrics dictionary (include u/v/psi areas to avoid interpolation)
     metrics = {
         ('X',): ['dx', 'dx_u', 'dx_v', 'dx_psi'],
         ('Y',): ['dy', 'dy_u', 'dy_v', 'dy_psi'],
         ('Z',): ['dz', 'dz_u', 'dz_v', 'dz_w', 'dz_w_u', 'dz_w_v'],
-        ('X', 'Y'): ['dA'],
+        ('X', 'Y'): ['dA', 'dA_u', 'dA_v', 'dA_psi'],
     }
 
     grid = xgcm.Grid(ds, coords=coords, metrics=metrics, padding='periodic', autoparse_metadata=False)
-
     return ds, grid
