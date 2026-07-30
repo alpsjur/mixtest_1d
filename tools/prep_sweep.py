@@ -19,6 +19,7 @@ import os
 import re
 import sys
 import yaml
+import csv
 import itertools
 from copy import deepcopy
 import shutil
@@ -163,8 +164,9 @@ def main():
             "params": combo,
         })
 
-        print(f"Prepared run {index}: {run_name} -> {result['run_dir']}")
+        print(f"Prepared run {index}: {run_name}")
         index += 1
+
 
     # Write manifests
     write_manifest_yaml(os.path.join(sweep_out_dir, "manifest.yaml"), sweep_id, manifest_rows)
