@@ -165,7 +165,7 @@ def write_grid(output, Lm, Mm, N, Vtransform, Vstretching, THETA_S, THETA_B, HC,
         v.valid_min = np.float64(0.0)
         v[:]        = str_a
 
-    print(f"Grid file written: {output}")
+    #print(f"Grid file written: {output}")
 
 
 def make_grid_from_config(cfg: dict) -> str:

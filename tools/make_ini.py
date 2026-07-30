@@ -224,7 +224,7 @@ def make_ini_from_config(cfg: dict) -> str:
         f.createVariable("temp", "f8", ("ocean_time", "s_rho", "eta_rho", "xi_rho"))[0, :, :, :] = temp
         f.createVariable("salt", "f8", ("ocean_time", "s_rho", "eta_rho", "xi_rho"))[0, :, :, :] = salt
 
-    print(f"Initial conditions file written: {ini_path}")
+    #print(f"Initial conditions file written: {ini_path}")
     return ini_path
 
 
