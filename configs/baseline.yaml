@@ -1,11 +1,8 @@
 run:
   name: baseline
 
-io:
-  base_dir: /home/ansju8054/Documents/Code/havvind-mix/mixtest_1d
-  input_dir: /home/ansju8054/Documents/Code/havvind-mix/mixtest_1d/runs/baseline/input
-  output_dir: /home/ansju8054/Documents/Code/havvind-mix/mixtest_1d/runs/baseline/output
-  roms_dir: /home/ansju8054/Documents/Code/havvind-mix/roms
+ROMS: 
+  yaml_loc: /home/ansju8054/Documents/Code/havvind-mix/mixtest_1d/roms
 
 files:
   grd: mixtest_1d_grd.nc
