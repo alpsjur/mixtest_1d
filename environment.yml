@@ -1,0 +1,17 @@
+name: roms
+channels:
+  - conda-forge
+dependencies:
+  - perl
+  - gfortran
+  - netcdf4
+  - libnetcdf
+  - make
+  - netcdf-fortran
+  - binutils
+  - ncview
+  - xarray
+  - matplotlib
+  - pyyaml
+  - jinja2
+  - xgcm
