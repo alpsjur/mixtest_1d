@@ -31,8 +31,11 @@ def die(msg: str):
 
 
 def check_layout():
+    # Create runs/ if it doesn't exist yet (happens on a fresh clone)
+    RUNS_DIR.mkdir(exist_ok=True)
+
     missing = []
-    for p in (TOOLS_DIR, CONFIGS_DIR, VARIANTS_DIR, RUNS_DIR, PREP_SCRIPT, RUN_SCRIPT, BASELINE_YAML):
+    for p in (TOOLS_DIR, CONFIGS_DIR, VARIANTS_DIR, PREP_SCRIPT, RUN_SCRIPT, BASELINE_YAML):
         if not p.exists():
             missing.append(str(p.relative_to(ROOT)))
     if missing:
