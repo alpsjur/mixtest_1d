@@ -25,107 +25,89 @@ from utils.utils import compute_z_r
 
 def zeta_initial(x_rho, y_rho, cfg):
     """
-    Define the initial free surface (`zeta`) as a function of `x_rho` and `y_rho`.
-    
-    Args:
-        x_rho: X-coordinates at RHO points.
-        y_rho: Y-coordinates at RHO points.
-        cfg: A dictionary of configuration parameters (e.g., zeta_slope).
+    Initial free surface elevation (zeta). Currently zero everywhere (flat surface).
 
-    Returns:
-        A 2D array representing the initial `zeta`.
+    To add a slope, e.g. for a pressure-driven flow test, you could use:
+        zeta_slope = cfg["initial"].get("zeta_slope", 0.0)
+        return zeta_slope * x_rho
     """
-    return np.zeros_like(x_rho, dtype=np.float64) 
+    return np.zeros_like(x_rho, dtype=np.float64)
 
 def ubar_initial(eta_u, xi_u, cfg):
     """
-    Define the initial vertically integrated u-momentum (`ubar`).
+    Initial depth-averaged u-velocity (ubar). Currently zero (no background flow).
 
-    Args:
-        eta_u: Number of points in the eta direction for U points.
-        xi_u: Number of points in the xi direction for U points.
-        cfg: A dictionary of configuration parameters (e.g., ubar_constant).
-
-    Returns:
-        A 2D array representing the initial `ubar`.
+    To add a uniform barotropic current, use:
+        return np.full((eta_u, xi_u), cfg["initial"]["ubar0"], dtype=np.float64)
     """
     return np.zeros((eta_u, xi_u), dtype=np.float64)
 
+
 def vbar_initial(eta_v, xi_v, cfg):
     """
-    Define the initial vertically integrated v-momentum (`vbar`).
+    Initial depth-averaged v-velocity (vbar). Currently zero (no background flow).
 
-    Args:
-        eta_v: Number of points in the eta direction for V points.
-        xi_v: Number of points in the xi direction for V points.
-        cfg: A dictionary of configuration parameters (e.g., vbar_constant).
-
-    Returns:
-        A 2D array representing the initial `vbar`.
+    To add a uniform barotropic current, use:
+        return np.full((eta_v, xi_v), cfg["initial"]["vbar0"], dtype=np.float64)
     """
     return np.zeros((eta_v, xi_v), dtype=np.float64)
 
+
 def u_initial(N, eta_u, xi_u, cfg):
     """
-    Define the initial 3D u-momentum component (`u`).
+    Initial 3D u-velocity field. Currently zero (no background shear).
 
-    Args:
-        N: Number of vertical levels.
-        eta_u: Number of points in the eta direction for U points.
-        xi_u: Number of points in the xi direction for U points.
-        cfg: A dictionary of configuration parameters (e.g., u_constant).
-
-    Returns:
-        A 3D array representing the initial `u`.
+    To add a depth-varying shear profile, use:
+        u_shear = cfg["initial"]["u_shear"]   # e.g. shear rate [1/s]
+        return u_shear * z_r_u  # z_r_u must be passed in if depth-dependent
     """
     return np.zeros((N, eta_u, xi_u), dtype=np.float64)
 
+
 def v_initial(N, eta_v, xi_v, cfg):
     """
-    Define the initial 3D v-momentum component (`v`).
+    Initial 3D v-velocity field. Currently zero (no background shear).
 
-    Args:
-        N: Number of vertical levels.
-        eta_v: Number of points in the eta direction for V points.
-        xi_v: Number of points in the xi direction for V points.
-        cfg: A dictionary of configuration parameters (e.g., v_constant).
-
-    Returns:
-        A 3D array representing the initial `v`.
+    To add a depth-varying shear profile, see u_initial for the approach.
     """
     return np.zeros((N, eta_v, xi_v), dtype=np.float64)
 
 def temp_initial(z_r, cfg):
     """
-    Define the initial temperature profile (`temp`) as a function of depth
-    using the hyperbolic tangent model.
+    Initial temperature profile using a hyperbolic tangent thermocline.
 
-    Args:
-        z_r: 3D array of vertical coordinates at RHO points.
-        cfg: A dictionary of configuration parameters (e.g., temp_T0, temp_dT, temp_zt, temp_ht).
+    The profile is parameterized by four values in cfg["initial"]:
+      - temp_T0 : surface temperature (°C)
+      - temp_dT : total temperature drop across the thermocline (°C)
+      - temp_zt : depth of the thermocline centre (m, positive down)
+      - temp_ht : half-thickness of the thermocline (m)
 
-    Returns:
-        A 3D array representing the initial `temp`.
+    The formula is:
+        T(z) = (T0 - dT) + (dT/2) * (1 + tanh((z + zt) / ht))
+
+    This gives T0 near the surface, T0-dT below the thermocline, and a smooth
+    transition of width ~ht centred at depth zt.
+
+    To use a linear stratification instead:
+        N2 = cfg["initial"]["N2"]   # buoyancy frequency squared [s^-2]
+        alpha = ...                  # thermal expansion coefficient
+        return T0 + (N2 / (g * alpha)) * z_r
     """
-    # Retrieve parameters with defaults
-    temp_T0 = cfg["initial"]["temp_T0"]  # Surface temperature (T_s)
-    temp_dT = cfg["initial"]["temp_dT"]  # Total temperature change across the thermocline (ΔT)
-    temp_zt = cfg["initial"]["temp_zt"]  # Depth of the thermocline center (z_t)
-    temp_ht = cfg["initial"]["temp_ht"]   # Thickness of the thermocline (h_t)
+    temp_T0 = cfg["initial"]["temp_T0"]
+    temp_dT = cfg["initial"]["temp_dT"]
+    temp_zt = cfg["initial"]["temp_zt"]
+    temp_ht = cfg["initial"]["temp_ht"]
+    return (temp_T0 - temp_dT) + (temp_dT / 2.0) * (1 + np.tanh((z_r + temp_zt) / temp_ht))
 
-    # Hyperbolic tangent temperature profile
-    return (temp_T0-temp_dT) + (temp_dT / 2.0) * (1 + np.tanh((z_r + temp_zt) / temp_ht))
 
 def salt_initial(z_r, cfg):
     """
-    Define the initial salinity profile (`salt`) as a function of depth.
+    Initial salinity profile. Currently uniform (no halocline).
 
-    Args:
-        z_r: 3D array of vertical coordinates at RHO points.
-        cfg: A dictionary of configuration parameters (e.g., salt_S0).
+    The constant value is set by cfg["initial"]["salt_S0"] (psu).
 
-    Returns:
-        A 3D array representing the initial `salt`.
+    To add a halocline, use the same tanh parameterization as temp_initial,
+    with separate salt_S0, salt_dS, salt_zs, salt_hs parameters.
     """
     salt_S0 = cfg["initial"]["salt_S0"]
     return np.full_like(z_r, salt_S0, dtype=np.float64)

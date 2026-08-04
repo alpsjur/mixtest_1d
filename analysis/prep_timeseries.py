@@ -4,59 +4,61 @@ import os
 import sys
 import argparse
 import numpy as np
-import xarray as xr
 import matplotlib.pyplot as plt
 
-# Make project utils importable (adjust paths if needed)
+# Make project utils importable
 THIS_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from utils.utils import prep_ds, load_yaml
+from utils.utils import open_roms_dataset
 
 
 def compute_time_vector(params: dict) -> np.ndarray:
+    """
+    Build a time axis in days from run config parameters.
+
+    Uses DT (timestep in seconds), NHIS (output interval in timesteps),
+    and NTIMES (total timesteps) to produce one value per output record.
+    """
     DT = params["time_stepping"]["DT"]
     NHIS = params["time_stepping"]["NHIS"]
     NTIMES = params["time_stepping"]["NTIMES"]
     N = NTIMES // NHIS
-    dt = DT * NHIS  # seconds per record
+    dt = DT * NHIS  # seconds per output record
     t_seconds = np.arange(N+1, dtype=np.float64) * dt
-
-    return t_seconds / (60 * 60 * 24)  # days
-
+    return t_seconds / (60 * 60 * 24)  # convert to days
 
 
 def prep_timeseries(resolved_config_path: str, var: str):
+    """
+    Compute the volume-averaged time series of a variable.
 
-    # Load configuration
-    params = load_yaml(resolved_config_path)
-    out_dir = params["io"]["output_dir"]
-    his_file = params["files"]["his"]
-    ds_path = os.path.join(out_dir, his_file)
+    Parameters
+    ----------
+    resolved_config_path : str
+        Path to a resolved_config.yaml produced by prep_experiment.
+    var : str
+        Variable name to read from the history file.
 
-    # Open dataset; use_cftime to avoid warnings for non-proleptic Gregorian calendars
-    time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
-    ds = xr.open_dataset(ds_path, decode_times=time_coder)
-
-    # Prepare dataset and grid (project-specific)
-    ds, grid = prep_ds(ds, params)
+    Returns
+    -------
+    days : ndarray
+        Time axis in days (one entry per output record).
+    mean_da : DataArray
+        Volume average of `var` over time.
+    """
+    ds, grid, params = open_roms_dataset(resolved_config_path)
 
     if var not in ds:
         ds.close()
         raise KeyError(f"Variable '{var}' not found in dataset.")
 
-    da = ds[var]
-
-    # Spatial average
-    avg_dims = ("X", "Y", "Z")  # Default average dimensions
-    mean_da = grid.average(da, axis=avg_dims).squeeze()
-
-    # Time axis
+    mean_da = grid.average(ds[var], axis=("X", "Y", "Z")).squeeze()
     days = compute_time_vector(params)
 
-    return days, mean_da 
+    return days, mean_da
 
 def main():
     parser = argparse.ArgumentParser(description="Plot a single timeseries from a resolved config.")

@@ -1,18 +1,15 @@
 #!/usr/bin/env python3
 """
-tools/run_sweep.py
+tools/prep_sweep.py
 
-Run a cartesian sweep over parameters, creating one run per combination.
+Prepare a cartesian parameter sweep: one ROMS run per parameter combination.
 
-- Loads a sweep YAML (single positional arg)
-- For each combination:
-  - resolved_cfg = deep_merge(base, overrides_for_combo)
-  - set resolved_cfg['run']['name'] from run_name_template
-  - delegate per-run setup to setup_experiment.prepare_run_from_resolved(resolved_cfg)
-  - record manifest entries (YAML + CSV) under sweep.output_dir
+Reads a sweep YAML, generates a resolved config for each combination using
+deep_merge(base, overrides), delegates per-run setup to prep_experiment, and
+writes YAML + CSV manifests listing every prepared run.
 
 Usage:
-  python tools/prep_sweep.py sweeps/my_sweep.yaml
+    python tools/prep_sweep.py sweeps/my_sweep.yaml
 """
 
 import os
@@ -31,11 +28,12 @@ ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
+from utils.utils import ensure_dir
 from prep_experiment import prepare_run_from_resolved, deep_merge
 
 
 def set_by_dotted_key(d: dict, dotted: str, value):
-    """Set a nested dictionary value by dotted path, creating dicts as needed."""
+    """Set a nested dict value using a dotted key path, creating missing dicts as needed."""
     parts = dotted.split(".")
     cur = d
     for p in parts[:-1]:
@@ -54,7 +52,7 @@ def get_by_dotted_key(d: dict, dotted: str):
 
 
 def cartesian_dict(param_dict: dict):
-    """Yield a dict for each cartesian combination of parameter lists."""
+    """Yield one dict per cartesian combination of the parameter lists."""
     keys = list(param_dict.keys())
     for combo in itertools.product(*(param_dict[k] for k in keys)):
         yield dict(zip(keys, combo))
@@ -75,11 +73,6 @@ def format_run_name(template: str, cfg: dict, params: dict, index: int) -> str:
     return re.sub(r"\{([^{}]+)\}", repl, template)
 
 
-def ensure_dir(path: str) -> None:
-    """Create directory if missing."""
-    os.makedirs(path, exist_ok=True)
-
-
 def write_manifest_yaml(path: str, sweep_id: str, rows: list) -> None:
     """Write YAML manifest for the sweep."""
     with open(path, "w") as f:
@@ -87,17 +80,17 @@ def write_manifest_yaml(path: str, sweep_id: str, rows: list) -> None:
 
 
 def write_manifest_csv(path: str, rows: list) -> None:
-    """Write CSV manifest for quick analysis."""
+    """Write CSV manifest for quick analysis. Each row maps to one prepared run."""
     cols = ["hash_exact", "status", "run_name", "resolved_config", "params"]
     with open(path, "w") as f:
         f.write(",".join(cols) + "\n")
         for r in rows:
-            params_str = yaml.safe_dump(r["params"], sort_keys=True).strip().replace("\n", "; ")
+            params_str = yaml.safe_dump(r.get("params", {}), sort_keys=True).strip().replace("\n", "; ")
             line = [
-                r["hash_exact"],
-                r["status"],
-                r["run_name"],
-                r["resolved_config"],
+                r.get("hash_exact", ""),
+                r.get("status", ""),
+                r.get("run_name", ""),
+                r.get("resolved_config", ""),
                 f"\"{params_str}\"",
             ]
             f.write(",".join(line) + "\n")

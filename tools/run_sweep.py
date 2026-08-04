@@ -3,57 +3,29 @@
 tools/run_sweep.py
 
 Run all ROMS simulations listed in a sweep manifest (manifest.yaml).
-- Uses tools/run_single.py to execute each simulation.
-- Updates per-run status (runs/<name>/logs/status.yaml).
-- Updates the sweep manifest (YAML + CSV) with status, return code, log path, and status file.
+
+Iterates the runs in order, calls run_single_resolved for each, and updates
+the manifest YAML + CSV after every run (so a crash mid-sweep doesn't lose progress).
 
 Usage:
-  python tools/run_sweep.py sweeps/<sweep_id>/manifest.yaml
+    python tools/run_sweep.py sweeps/<sweep_id>/manifest.yaml
 """
 
 import os
 import sys
-import yaml
-import csv
 from typing import List, Dict
 
-# Ensure project root is importable when called from tools/
+# Ensure project root and tools/ are importable when called from tools/
 THIS_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
+if THIS_DIR not in sys.path:
+    sys.path.insert(0, THIS_DIR)
 
-from tools.run_experiment import run_single_resolved
-
-
-def load_yaml(path: str) -> dict:
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
-
-def save_yaml(path: str, data: dict) -> None:
-    with open(path, "w") as f:
-        yaml.safe_dump(data, f, sort_keys=False)
-
-
-def write_manifest_csv(csv_path: str, rows: List[Dict]) -> None:
-    """
-    Write a CSV manifest with updated status/return codes/logs.
-    Columns align with prep_sweep output.
-    """
-    cols = ["hash_exact", "status", "run_name", "resolved_config", "params"]
-    with open(csv_path, "w") as f:
-        f.write(",".join(cols) + "\n")
-        for r in rows:
-            params_str = yaml.safe_dump(r.get("params", {}), sort_keys=True).strip().replace("\n", "; ")
-            line = [
-                r.get("hash_exact", ""),
-                r.get("status", ""),
-                r.get("run_name", ""),
-                r.get("resolved_config", ""),
-                f"\"{params_str}\"",
-            ]
-            f.write(",".join(line) + "\n")
+from utils.utils import load_yaml, save_yaml
+from run_experiment import run_single_resolved
+from prep_sweep import write_manifest_csv
 
 
 def run_from_manifest(manifest_yaml_path: str) -> None:

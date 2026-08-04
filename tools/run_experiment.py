@@ -1,28 +1,28 @@
 #!/usr/bin/env python3
+"""
+tools/run_experiment.py
+
+Execute a single ROMS simulation from a resolved config.
+
+Usage:
+    python tools/run_experiment.py runs/<run_name>/resolved_config.yaml
+"""
 import os
 import sys
-import yaml
 import datetime
 import subprocess
 import shlex
 
-# Project root (repo root), anchored to this file's location
+# Ensure project root is importable
 THIS_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
+if ROOT_DIR not in sys.path:
+    sys.path.insert(0, ROOT_DIR)
 
-# Always run ROMS at <ROOT_DIR>/roms/romsS
+from utils.utils import load_yaml, save_yaml, ensure_dir
+
+# Always run ROMS from <ROOT_DIR>/roms/romsS
 ROMS_EXEC = os.path.join(ROOT_DIR, "roms", "romsS")
-
-def load_yaml(path: str) -> dict:
-    with open(path, "r") as f:
-        return yaml.safe_load(f)
-
-def save_yaml(path: str, data: dict) -> None:
-    with open(path, "w") as f:
-        yaml.safe_dump(data, f, sort_keys=False)
-
-def ensure_dir(path: str) -> None:
-    os.makedirs(path, exist_ok=True)
 
 def write_run_status(logs_dir: str, status: dict) -> str:
     status_path = os.path.join(logs_dir, "status.yaml")

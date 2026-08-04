@@ -5,7 +5,6 @@ when no other production term is present (i.e. no shear,
 no stratification).
 """
 
-import xarray as xr
 import numpy as np
 import os
 import sys
@@ -15,7 +14,7 @@ ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from utils.utils import prep_ds, load_yaml
+from utils.utils import open_roms_dataset
 
 
 def calc_Pd(str_a, Cd, u):
@@ -24,18 +23,10 @@ def calc_Pd(str_a, Cd, u):
 
 def run_test(make_plots: bool = True) -> bool:
     experimentpath = "runs/test_STRUCTURE_PRODUCTION"
-    params = load_yaml(f"{experimentpath}/resolved_config.yaml")
+    ds, grid, params = open_roms_dataset(f"{experimentpath}/resolved_config.yaml")
 
     str_a = params["structure"]["str_a"]
     Cd = params["structure"]["CD"]
-
-    # Read the dataset and prepare it
-    time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
-    ds = xr.open_dataset(
-        params["io"]["output_dir"] + "/" + params["files"]["his"],
-        decode_times=time_coder
-    )
-    ds, grid = prep_ds(ds, params)
 
     # Shift variables to cell centers for easier comparison
     u = grid.interp(ds.u, "X")

@@ -2,54 +2,57 @@
 # prep_profiles.py
 import os
 import sys
-import argparse
-import numpy as np
-import xarray as xr
-import matplotlib.pyplot as plt
 
-# Make project utils importable (adjust paths if needed)
+# Make project utils importable
 THIS_DIR = os.path.dirname(__file__)
 ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from utils.utils import prep_ds, load_yaml
+from utils.utils import open_roms_dataset
+
 
 def prep_profiles(resolved_config_path: str, var: str, timestep: int = -1, subtract_ini: bool = False):
+    """
+    Compute the horizontally averaged vertical profile of a variable.
 
-    # Load configuration
-    params = load_yaml(resolved_config_path)
-    out_dir = params["io"]["output_dir"]
-    his_file = params["files"]["his"]
-    ds_path = os.path.join(out_dir, his_file)
+    Parameters
+    ----------
+    resolved_config_path : str
+        Path to a resolved_config.yaml produced by prep_experiment.
+    var : str
+        Variable name to read from the history file.
+    timestep : int
+        Ocean time index to use (default -1 = last timestep).
+    subtract_ini : bool
+        If True, subtract the initial (timestep=0) profile so the result
+        shows the change relative to initial conditions.
 
-    # Open dataset; use_cftime to avoid warnings for non-proleptic Gregorian calendars
-    time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
-    ds = xr.open_dataset(ds_path, decode_times=time_coder)
-
-    # Prepare dataset and grid (project-specific)
-    ds, grid = prep_ds(ds, params)
+    Returns
+    -------
+    da_avg : DataArray
+        Horizontally averaged profile at the selected timestep.
+    z : DataArray
+        Corresponding depth coordinate (m, negative down).
+    """
+    ds, grid, params = open_roms_dataset(resolved_config_path)
 
     if var not in ds:
         ds.close()
         raise KeyError(f"Variable '{var}' not found in dataset.")
 
-    da = ds[var]
+    da = grid.average(ds[var].isel(ocean_time=timestep), axis=("X", "Y")).squeeze()
 
-    # Select the desired timestep
-    da = da.isel(ocean_time=timestep)
-
-    # average over horizontal dimensions (X, Y)
-    da_avg = grid.average(da, axis=("X", "Y")).squeeze()
     if subtract_ini:
         da_ini = grid.average(ds[var].isel(ocean_time=0), axis=("X", "Y")).squeeze()
-        da_avg = da_avg - da_ini
+        da = da - da_ini
 
-    # check which vertical dimension is present and return it along with the averaged data
-    if "s_rho" in da_avg.dims:
+    # Return the matching depth coordinate based on the vertical dimension present
+    if "s_rho" in da.dims:
         z = grid.average(ds.z_rho, axis=("X", "Y")).squeeze()
-    elif "s_w" in da_avg.dims:
+    elif "s_w" in da.dims:
         z = grid.average(ds.z_w, axis=("X", "Y")).squeeze()
     else:
         raise ValueError("No recognized vertical dimension found in the data array.")
-    return da_avg, z
+
+    return da, z

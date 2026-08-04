@@ -1,6 +1,7 @@
 # python
+import os
 import numpy as np
-import yaml 
+import yaml
 import xarray as xr
 import xgcm
 
@@ -120,8 +121,49 @@ def compute_z_w(h, hc, theta_s, theta_b, N):
 
 
 def load_yaml(path: str) -> dict:
+    """Load a YAML file and return its contents as a dict."""
     with open(path, "r") as f:
         return yaml.safe_load(f)
+
+
+def save_yaml(path: str, data: dict) -> None:
+    """Write a dict to a YAML file."""
+    with open(path, "w") as f:
+        yaml.safe_dump(data, f, sort_keys=False)
+
+
+def ensure_dir(path: str) -> None:
+    """Create a directory (and any parents) if it does not already exist."""
+    os.makedirs(path, exist_ok=True)
+
+
+def open_roms_dataset(config_path: str):
+    """
+    Open a ROMS history file and return a prepared dataset, grid, and config.
+
+    Reads the resolved config at `config_path`, opens the history NetCDF file
+    referenced by that config, and calls `prep_ds` to attach grid metrics.
+
+    Parameters
+    ----------
+    config_path : str
+        Path to a resolved_config.yaml produced by prep_experiment.
+
+    Returns
+    -------
+    ds : xarray.Dataset
+        History dataset with vertical/horizontal metrics attached.
+    grid : xgcm.Grid
+        xgcm Grid with coordinate metrics for averaging/differencing.
+    params : dict
+        The loaded config dict (useful for accessing run parameters).
+    """
+    params = load_yaml(config_path)
+    his_path = os.path.join(params["io"]["output_dir"], params["files"]["his"])
+    time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+    ds = xr.open_dataset(his_path, decode_times=time_coder)
+    ds, grid = prep_ds(ds, params)
+    return ds, grid, params
 
 def prep_ds(ds, params):
     """

@@ -1,4 +1,3 @@
-import xarray as xr
 import numpy as np
 import os
 import sys
@@ -8,7 +7,7 @@ ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from utils.utils import prep_ds, load_yaml
+from utils.utils import open_roms_dataset
 
 
 def analytical_u(F, t):
@@ -17,7 +16,7 @@ def analytical_u(F, t):
 
 def run_test(make_plots: bool = True) -> bool:
     experimentpath = "runs/test_UV_BODYFORCE"
-    params = load_yaml(f"{experimentpath}/resolved_config.yaml")
+    ds, grid, params = open_roms_dataset(f"{experimentpath}/resolved_config.yaml")
 
     # Analytical solution for u
     NTIMES = params["time_stepping"]["NTIMES"]
@@ -30,13 +29,6 @@ def run_test(make_plots: bool = True) -> bool:
     t = np.arange(0, T + dt / 2, dt)
     u_analytical = analytical_u(F, t)
 
-    # Read the dataset and prepare it
-    time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
-    ds = xr.open_dataset(
-        params["io"]["output_dir"] + "/" + params["files"]["his"],
-        decode_times=time_coder
-    )
-    ds, grid = prep_ds(ds, params)
     u_simulation = ds.u.values
 
     # Check that the analytical solution matches the numerical solution
