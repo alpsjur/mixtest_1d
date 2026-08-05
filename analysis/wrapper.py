@@ -94,7 +94,7 @@ def plot_all(sweep1: str, sweep2: str, variables: list, save_dir: str | None, sh
             plt.tight_layout()
 
             if save_dir:
-                fname = os.path.join(save_dir, f"{analysis}_{variable}.png")
+                fname = os.path.join(save_dir, f"{analysis}_{variable}_{sweep1.split('/')[-2]}_{sweep2.split('/')[-2]}.png")
                 fig.savefig(fname)
                 print(f"  Saved: {fname}")
 
@@ -106,7 +106,7 @@ def main():
     parser = argparse.ArgumentParser(description="Plot sweep comparisons for selected variables.")
     parser.add_argument("--sweep1", default="sweeps/k-e_variations/manifest.yaml",
                         help="Path to first sweep manifest (solid lines)")
-    parser.add_argument("--sweep2", default="sweeps/gen_variations/manifest.yaml",
+    parser.add_argument("--sweep2", default="sweeps/gen_mapped/manifest.yaml",
                         help="Path to second sweep manifest (dashed lines)")
     parser.add_argument("--variables", nargs="+", default=["AKt", "temp"],
                         help="Variable names to plot (default: AKt temp)")
