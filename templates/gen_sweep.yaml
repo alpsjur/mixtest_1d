@@ -1,13 +1,13 @@
 sweep:
-  id: gen_variations of baseline
+  id: gen_mapped of baseline
   base_config: configs/baseline.yaml
 
   parameters:
     #structure.str_a: [0.0001]
     #structure.BFRC_U: [3.15]
     #structure.c4: [0.6, 1.4]
-    structure.c4: [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.6]
+    structure.c4: [0.44, 0.97]
 
   run_name_template: "gen_c4{structure.c4}"
 
-  output_dir: "sweeps/gen_variations"
+  output_dir: "sweeps/gen_mapped"
