@@ -4,6 +4,7 @@ import os
 import sys
 import matplotlib.pyplot as plt
 from typing import Callable, Dict, Any, Tuple, Optional
+from cmcrameri import cm as cmc
 
 # Ensure local and project imports work (adjust paths if needed)
 THIS_DIR = os.path.dirname(__file__)
@@ -27,6 +28,7 @@ def plot_sweep(
     label_runs: bool = True,
     linestyle: str = "-",
     linewidth: float = 2.0,
+    cmap = cmc.batlow,
 ):
     """
     Plot data for all runs in a sweep manifest (YAML) onto the provided axis,
@@ -44,6 +46,7 @@ def plot_sweep(
     - prep_kwargs: optional dict of extra keyword args passed to prep_fn
     - label_runs: include a legend entry per run (default: True)
     - linestyle, linewidth: simple style controls applied to all runs in this sweep
+    - cmap: colormap to use for plotting lines (default: cmc.batlow)
 
     Returns
     - ax: matplotlib Axes with plotted lines
@@ -71,6 +74,7 @@ def plot_sweep(
             label=label,
             linestyle=linestyle,
             linewidth=linewidth,
+            color=cmap(i / max(len(runs) - 1, 1)),  # Normalize index for colormap
         )
 
     if label_runs:
