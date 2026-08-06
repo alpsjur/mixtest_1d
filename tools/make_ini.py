@@ -40,7 +40,8 @@ def ubar_initial(eta_u, xi_u, cfg):
     To add a uniform barotropic current, use:
         return np.full((eta_u, xi_u), cfg["initial"]["ubar0"], dtype=np.float64)
     """
-    return np.zeros((eta_u, xi_u), dtype=np.float64)
+    ubar0 = cfg["initial"].get("ubar0", 0.0)  # default to 0.0 if not specified 
+    return np.full((eta_u, xi_u), ubar0, dtype=np.float64)
 
 
 def vbar_initial(eta_v, xi_v, cfg):

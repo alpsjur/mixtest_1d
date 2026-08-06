@@ -17,6 +17,7 @@ time_stepping:
 
 initial:
   temp_dT: 0.0    # no shear
+  ubar0: 0        # start from rest
 
 GLS:        # k-epsilon closure, so gls = epsilon
   P: 3.0
@@ -28,3 +29,4 @@ GLS:        # k-epsilon closure, so gls = epsilon
   C3P : 1.0
   SIGK: 2
   SIGP: 1.3
+

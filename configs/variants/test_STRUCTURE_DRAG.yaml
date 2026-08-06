@@ -16,3 +16,6 @@ bodyforce:
 
 time_stepping:
   NTIMES: 30240
+
+initial:
+  ubar0: 0      # start from rest

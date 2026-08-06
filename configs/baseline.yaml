@@ -41,7 +41,7 @@ vertical:
 time_stepping:
   NTIMES: 30240  # 60480 for month, 15120 for week, 2160 for day
   DT: 40.0
-  NHIS: 90
+  NHIS: 90       # history every hour
 
 phys:
   F0: 0       # Coriolis (s^-1)
@@ -51,10 +51,10 @@ structure:
   str_a: 0.0001            
   depth_zero_below: 1.0e9 # set to a large number to keep full column non-zero
   CD: 0.63
-  c4: 0.4
+  c4: 0.44           # strong mixing
 
 bodyforce:
-  BFRC_U: 3.15        # e-7 m/s2, x-direction
+  BFRC_U: 3.15        # e-7 m/s2, x-direction, corresponds to 0.1 m/s velocity in steady state
   BFRC_V: 0.0         # e-7 m/s2, y-direction 
   BFRC_TSTR: 0.0      # days, ramp start
   BFRC_TEND: 0.0      # days, ramp end
@@ -71,3 +71,6 @@ initial:
 
   # Salinity (constant)
   salt_S0: 35.0
+
+  # velocity
+  ubar0: 0.1      # start from steady state
