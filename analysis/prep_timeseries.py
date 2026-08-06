@@ -12,23 +12,7 @@ ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from utils.utils import open_roms_dataset
-
-
-def compute_time_vector(params: dict) -> np.ndarray:
-    """
-    Build a time axis in days from run config parameters.
-
-    Uses DT (timestep in seconds), NHIS (output interval in timesteps),
-    and NTIMES (total timesteps) to produce one value per output record.
-    """
-    DT = params["time_stepping"]["DT"]
-    NHIS = params["time_stepping"]["NHIS"]
-    NTIMES = params["time_stepping"]["NTIMES"]
-    N = NTIMES // NHIS
-    dt = DT * NHIS  # seconds per output record
-    t_seconds = np.arange(N+1, dtype=np.float64) * dt
-    return t_seconds / (60 * 60 * 24)  # convert to days
+from utils.utils import open_roms_dataset, compute_time_vector
 
 
 def prep_timeseries(resolved_config_path: str, var: str):

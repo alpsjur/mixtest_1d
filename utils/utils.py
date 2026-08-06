@@ -274,3 +274,19 @@ def prep_ds(ds, params):
 
     grid = xgcm.Grid(ds, coords=coords, metrics=metrics, padding='periodic', autoparse_metadata=False)
     return ds, grid
+
+
+def compute_time_vector(params: dict) -> np.ndarray:
+    """
+    Build a time axis in days from run config parameters.
+
+    Uses DT (timestep in seconds), NHIS (output interval in timesteps),
+    and NTIMES (total timesteps) to produce one value per output record.
+    """
+    DT = params["time_stepping"]["DT"]
+    NHIS = params["time_stepping"]["NHIS"]
+    NTIMES = params["time_stepping"]["NTIMES"]
+    N = NTIMES // NHIS
+    dt = DT * NHIS  # seconds per output record
+    t_seconds = np.arange(N+1, dtype=np.float64) * dt
+    return t_seconds / (60 * 60 * 24)  # convert to days
