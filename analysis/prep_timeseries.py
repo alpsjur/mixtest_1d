@@ -56,7 +56,7 @@ def main():
     fig, ax = plt.subplots(figsize=(8, 4.5))
     ax.plot(days, mean_da.values, label=args.variable)
     ax.set_xlabel("Time (days)")
-    ax.set_ylabel(f"{args.variable} (volume-avg)")
+    ax.set_ylabel(f"{args.variable} ({mean_da.units})")
     ax.set_title(f"Time series of domain averaged {args.variable}")
     ax.grid()
 

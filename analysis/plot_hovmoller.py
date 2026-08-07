@@ -66,11 +66,10 @@ def main():
 
     days, depth, mean_da = prep_hovmoller(args.resolved_config, args.variable)
 
-    print(f"days shape: {days.shape}, depth shape: {depth.shape}, mean_da shape: {mean_da.shape}")
-
     fig, ax = plt.subplots(figsize=(8, 4.5))
     c = ax.pcolormesh(days, depth, mean_da.T, shading='auto')
-    fig.colorbar(c, ax=ax, label=args.variable)
+    fig.colorbar(c, ax=ax, label=f"{args.variable} ({mean_da.units})")
+    ax.contour(days, depth, mean_da.T, colors='k', linewidths=0.5, levels=20)
     ax.set_xlabel("Time (days)")
     ax.set_ylabel("Depth (m)")
     ax.set_title(f"Hovmoller diagram of area-averaged {args.variable}")

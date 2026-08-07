@@ -56,3 +56,30 @@ def prep_profiles(resolved_config_path: str, var: str, timestep: int = -1, subtr
         raise ValueError("No recognized vertical dimension found in the data array.")
 
     return da, z
+
+
+def main():
+    import argparse
+    import matplotlib.pyplot as plt
+
+    parser = argparse.ArgumentParser(description="Plot horizontally averaged vertical profile of a variable.")
+    parser.add_argument("resolved_config", type=str, help="Path to resolved_config.yaml")
+    parser.add_argument("variable", type=str, help="Variable name to plot")
+    parser.add_argument("--timestep", type=int, default=-1, help="Ocean time index to use (default: last timestep)")
+    parser.add_argument("--subtract_ini", action="store_true", help="Subtract initial profile (timestep=0)")
+
+    args = parser.parse_args()
+
+    da_avg, z = prep_profiles(args.resolved_config, args.variable, args.timestep, args.subtract_ini)
+
+    plt.figure(figsize=(6, 8))
+    plt.plot(da_avg, z)
+    plt.gca().invert_yaxis()
+    plt.xlabel(f"{args.variable} ({da_avg.units})")
+    plt.ylabel("Depth (m)")
+    plt.title(f"Horizontally averaged profile of {args.variable}")
+    plt.grid()
+    plt.show()
+
+if __name__ == "__main__":
+    main()
