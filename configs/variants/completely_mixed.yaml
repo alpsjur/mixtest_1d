@@ -1,0 +1,6 @@
+run:
+  name: completely_mixed
+
+time_stepping:
+  NTIMES: 2160000  # 100 days
+  NHIS: 2160       # history every 1 day
