@@ -61,7 +61,7 @@ def main():
     parser = argparse.ArgumentParser(description="Plot a Hovmoller diagram from a resolved config.")
     parser.add_argument("--resolved_config", type=str, default="runs/baseline/resolved_config.yaml", help="Path to resolved_config.yaml")
     parser.add_argument("--variable", type=str, default="rho", help="Variable name to plot")
-    parser.add_argument("--output", type=str, default=None, help="Output plot file (optional)")
+    parser.add_argument("--save", action="store_true", help="Save the plot to file")
     args = parser.parse_args()
 
     days, depth, mean_da = prep_hovmoller(args.resolved_config, args.variable)
@@ -74,8 +74,11 @@ def main():
     ax.set_ylabel("Depth (m)")
     ax.set_title(f"Hovmoller diagram of area-averaged {args.variable}")
 
-    if args.output:
-        plt.savefig(args.output)
+    if args.save:
+        filename = f"figures/hovmoller_{args.variable}_{args.resolved_config.split('/')[-2]}.png"
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        plt.savefig(filename)
+        print(f"Plot saved to {filename}")
     else:
         plt.show()
 

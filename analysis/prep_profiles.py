@@ -67,6 +67,7 @@ def main():
     parser.add_argument("variable", type=str, help="Variable name to plot")
     parser.add_argument("--timestep", type=int, default=-1, help="Ocean time index to use (default: last timestep)")
     parser.add_argument("--subtract_ini", action="store_true", help="Subtract initial profile (timestep=0)")
+    parser.add_argument("--save", action="store_true", help="Save the plot to file")
 
     args = parser.parse_args()
 
@@ -79,7 +80,13 @@ def main():
     plt.ylabel("Depth (m)")
     plt.title(f"Horizontally averaged profile of {args.variable}")
     plt.grid()
-    plt.show()
+    if args.save:
+        filename = f"figures/profile_{args.variable}_{args.resolved_config.split('/')[-2]}.png"
+        os.makedirs(os.path.dirname(filename), exist_ok=True)
+        plt.savefig(filename)
+        print(f"Plot saved to {filename}")
+    else:
+        plt.show()
 
 if __name__ == "__main__":
     main()
