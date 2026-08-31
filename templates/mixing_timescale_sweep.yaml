@@ -1,0 +1,42 @@
+sweep:
+  id: mixing_timescale sensitivity test (Carpenter et al. 2016 style)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Sensitivity axes. Note structure.str_a and bodyforce.BFRC_U are held
+  # fixed (see configs/variants/mixing_timescale.yaml) -- they are increased
+  # relative to baseline so that tau_mix is a few days/weeks rather than
+  # ~900 days (see baseline.yaml comment: BFRC_U=3.15e-7 + str_a=0.0001
+  # gives u_inf=0.1 m/s but tau_mix ~ 920 days for temp_dT=10, H0=150).
+  # u_inf ~0.07-0.1 m/s here represents a background current (e.g. the
+  # Norwegian Coastal Current), not a tidal velocity -- the parametrization
+  # only depends on flow speed, regardless of what drives it.
+  #
+  # c4 does not enter the analytic tau_mix_theory prediction at all (it only
+  # controls how P_d is converted into eddy diffusivity via the GLS psi
+  # equation) -- sweeping it tests whether the *actual* model mixing time
+  # scale nonetheless depends on it, which would indicate the simple
+  # Carpenter et al. scaling misses closure-dependent mixing efficiency.
+  #
+  # IMPORTANT: structure.c4 must stay <= GLS.C1 (see configs/baseline.yaml,
+  # GLS.C1=1.0 for this generic-closure setup). c4 acts as the structure-
+  # production analogue of the shear-production coefficient c1 in the GLS
+  # psi-equation; setting c4 > c1 was tested (c4=1.4) and reproducibly
+  # blows up the explicit time-stepping of the psi equation, collapsing
+  # TKE/GLS to their numerical floor and killing mixing entirely in every
+  # CD/dT/H0 combination -- not a real physical result, just an invalid
+  # parameter choice outside the numerically stable range.
+  parameters:
+    structure.CD: [0.63, 1.26]
+    structure.c4: [0.44, 0.97]
+    initial.temp_dT: [5.0, 10.0]
+    grid.H0: [75.0, 150.0]
+
+  run_name_template: "mixtau_CD{structure.CD}_c4{structure.c4}_dT{initial.temp_dT}_H{grid.H0}"
+
+  output_dir: "sweeps/mixing_timescale"
+
+  # NTIMES is NOT set here -- tools/prep_mixing_timescale_sweep.py computes
+  # it per-combination from analytic_mixing_timescale() before calling
+  # prep_experiment, so each run gets NTIMES ~= ntimes_margin * tau_mix_theory.
+  ntimes_margin: 2.5

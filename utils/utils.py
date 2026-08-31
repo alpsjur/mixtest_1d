@@ -5,6 +5,18 @@ import yaml
 import xarray as xr
 import xgcm
 
+# ---------------------------------------------------------------------------
+# Physical constants
+#
+# These must stay in sync with the hardcoded EOS/Boussinesq values in
+# templates/mixtest_1d.in.j2 (RHO0, R0, TCOEF are not currently exposed as
+# config parameters there).
+# ---------------------------------------------------------------------------
+G = 9.81          # gravitational acceleration [m s-2]
+RHO0 = 1025.0     # Boussinesq reference density [kg m-3] (template RHO0)
+R0 = 1027.0       # linear EOS reference density [kg m-3]  (template R0)
+TCOEF = 1.7e-4    # thermal expansion coefficient [degC-1] (template TCOEF)
+
 def compute_stretching(theta_s, theta_b, N):
     """
     Compute vertical stretching curves (s_rho, Cs_r) and (s_w, Cs_w)
@@ -274,6 +286,230 @@ def prep_ds(ds, params):
 
     grid = xgcm.Grid(ds, coords=coords, metrics=metrics, padding='periodic', autoparse_metadata=False)
     return ds, grid
+
+
+def compute_phi(ds, grid, params):
+    """
+    Time evolution of the stratification potential energy anomaly phi(t),
+    following Carpenter et al. (2016), Eq. 7:
+
+        phi(t) = integral_0^H  g * z * (rho_mix - rho(z,t))  dz
+
+    with z measured *upward from the seabed* (z=0 at the bed, z=H at the
+    surface) -- the opposite convention to ROMS' z_rho (0 at the surface,
+    negative downward). rho_mix is the density the water column would have
+    if instantaneously and completely mixed; since this idealised setup has
+    no surface/bottom buoyancy fluxes and no tracer sources or nudging
+    (LtracerSrc/LtracerCLM == F in the .in template), the volume-averaged
+    density is conserved and rho_mix is just the (constant-in-time)
+    volume average of the initial density field.
+
+    phi > 0 for stable stratification and phi -> 0 as the water column
+    is mixed. Throughout this function "rho" refers to whatever density
+    field is stored in the history file (ROMS' idDano "density anomaly");
+    since phi only involves differences, the constant offset used by that
+    convention is irrelevant.
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Prepared history dataset (see open_roms_dataset / prep_ds).
+    grid : xgcm.Grid
+        Grid with metrics attached (see prep_ds).
+    params : dict
+        Resolved run config (used for grid.H0).
+
+    Returns
+    -------
+    phi : xarray.DataArray
+        Time series of phi(t), dims (ocean_time,), units J m-2 (per unit
+        horizontal area).
+    rho_mix0 : xarray.DataArray
+        Scalar volume-averaged initial density (the "rho_mix" datum).
+    """
+    if "rho" not in ds:
+        raise KeyError(
+            "Variable 'rho' (density anomaly, idDano) not found in dataset. "
+            "Enable Hout(idDano) in the ROMS input file."
+        )
+
+    H0 = float(params["grid"]["H0"])
+
+    # rho_mix: volume-averaged density at t=0 (conserved for all t in this
+    # closed-column setup -- see docstring). Kept as a DataArray so it
+    # broadcasts cleanly against the full field below.
+    rho_mix0 = grid.average(ds["rho"].isel(ocean_time=0), axis=("X", "Y", "Z"))
+
+    # z measured upward from the seabed (Carpenter et al. convention).
+    z_from_bed = ds["z_rho"] + H0
+
+    integrand = G * (rho_mix0 - ds["rho"]) * z_from_bed
+
+    # Integrate vertically first (matches metric dims exactly), then average
+    # horizontally -- equivalent to averaging first since the domain is
+    # horizontally homogeneous, but avoids metric/dim mismatches.
+    phi_xy = grid.integrate(integrand, "Z")
+    phi = grid.average(phi_xy, axis=("X", "Y")).squeeze()
+    phi.name = "phi"
+    phi.attrs["long_name"] = "stratification potential energy anomaly"
+    phi.attrs["units"] = "J m-2"
+
+    return phi, rho_mix0
+
+
+def compute_Pd(ds, grid, params):
+    """
+    Structure-drag turbulence production rate P_d(z,t), following the
+    STRUCTURE_MIXING parametrization (Rennau, Schimmels & Burchard 2012):
+
+        P_d = 0.5 * CD * str_a * (u^2 + v^2)^(3/2)     [m2 s-3]
+
+    str_a and CD are taken from the resolved config (params["structure"]),
+    i.e. this assumes str_a is spatially uniform over the water column, as
+    is the case for the baseline/sensitivity-sweep configs (depth_zero_below
+    set far below H0). If a depth-varying str_a is used, this needs to be
+    read from the grid file instead.
+
+    Returns
+    -------
+    Pd : xarray.DataArray
+        P_d(z,t) at rho-points, dims (ocean_time, s_rho, eta_rho, xi_rho).
+    """
+    CD = float(params["structure"]["CD"])
+    str_a = float(params["structure"]["str_a"])
+
+    u_r = grid.interp(ds["u"], "X")
+    v_r = grid.interp(ds["v"], "Y")
+    spd2 = u_r ** 2 + v_r ** 2
+
+    Pd = 0.5 * CD * str_a * spd2 * np.sqrt(spd2)
+    Pd.name = "Pd"
+    Pd.attrs["long_name"] = "structure-drag turbulence production"
+    Pd.attrs["units"] = "m2 s-3"
+    return Pd
+
+
+def compute_Pstr(ds, grid, params):
+    """
+    Time series of P_str(t), the depth-integrated (per unit horizontal area)
+    power extracted from the mean flow by structure drag:
+
+        P_str(t) = rho0 * integral_0^H  P_d(z,t)  dz     [W m-2]
+
+    This is the diagnostic (model-derived) counterpart to the analytic
+    P_str used in analytic_mixing_timescale, and is meant to be evaluated
+    from actual u,v time series (accounts for spin-up transients etc.).
+
+    Returns
+    -------
+    Pstr : xarray.DataArray
+        Time series, dims (ocean_time,), units W m-2.
+    """
+    Pd = compute_Pd(ds, grid, params)
+    Pstr_xy = grid.integrate(RHO0 * Pd, "Z")
+    Pstr = grid.average(Pstr_xy, axis=("X", "Y")).squeeze()
+    Pstr.name = "Pstr"
+    Pstr.attrs["long_name"] = "depth-integrated structure-drag power extraction"
+    Pstr.attrs["units"] = "W m-2"
+    return Pstr
+
+
+def analytic_mixing_timescale(cfg: dict) -> dict:
+    """
+    Analytic (pre-run) estimate of the mixing time scale tau_mix, following
+    Carpenter et al. (2016).
+
+    Note: the body force in this idealised setup represents *any* steady
+    background current (e.g. a mean coastal current, or a tidally-averaged
+    residual current) -- the drag/mixing balance below only depends on the
+    resulting flow speed, not on what physically drives it.
+
+    Assumes the body-force-driven flow reaches a quasi-steady balance with
+    structure drag (same balance as tests/test_STRUCTURE_DRAG.py):
+
+        u_inf = sqrt(2 * BFRC_U / (CD * str_a))
+
+    This requires BFRC_V == 0 (else the 2D force/drag balance is not a
+    simple closed-form expression) and str_a active over the full depth
+    (structure.depth_zero_below >= grid.H0), since P_str = rho0 * H * P_d
+    assumes P_d is depth-uniform.
+
+    tau_mix = g * delta_rho * H^2 / P_str
+            = g * delta_rho * H / (rho0 * P_d)
+
+    Use this to size NTIMES for a run *before* it has been executed (e.g. in
+    a sensitivity sweep where each parameter combination implies a different
+    tau_mix). To check whether the actual model run mixes on this predicted
+    time scale, compare against the diagnostic P_str from compute_Pstr()
+    and the phi(t) curve from compute_phi() after the fact.
+
+    Parameters
+    ----------
+    cfg : dict
+        Resolved (or about-to-be-resolved) run config, with at least
+        structure.{CD,str_a,depth_zero_below}, bodyforce.{BFRC_U,BFRC_V},
+        grid.H0, initial.temp_dT.
+
+    Returns
+    -------
+    dict with keys:
+        u_inf         quasi-steady speed [m/s]
+        Pd            structure-drag production [m2/s3]
+        Pstr          depth-integrated power extraction [W/m2]
+        delta_rho     top-to-bottom density difference [kg/m3]
+        tau_mix       predicted mixing time scale [s]
+    """
+    CD = float(cfg["structure"]["CD"])
+    str_a = float(cfg["structure"]["str_a"])
+    depth_zero_below = float(cfg["structure"]["depth_zero_below"])
+    H0 = float(cfg["grid"]["H0"])
+    BFRC_U = float(cfg["bodyforce"]["BFRC_U"]) * 1e-7  # config stores e-7 m/s2
+    BFRC_V = float(cfg["bodyforce"].get("BFRC_V", 0.0)) * 1e-7
+    temp_dT = float(cfg["initial"]["temp_dT"])
+
+    if abs(BFRC_V) > 0.0:
+        raise ValueError(
+            "analytic_mixing_timescale assumes BFRC_V == 0 (simple 1D force/"
+            "drag balance). For BFRC_V != 0, estimate tau_mix from a model "
+            "run instead (compute_Pstr + compute_phi)."
+        )
+    if depth_zero_below < H0:
+        raise ValueError(
+            "analytic_mixing_timescale assumes str_a is uniform over the "
+            "full water column (structure.depth_zero_below >= grid.H0)."
+        )
+    if str_a <= 0.0 or CD <= 0.0:
+        raise ValueError("analytic_mixing_timescale requires str_a > 0 and CD > 0.")
+
+    c4 = cfg.get("structure", {}).get("c4")
+    c1 = cfg.get("GLS", {}).get("C1")
+    if c4 is not None and c1 is not None and float(c4) > float(c1):
+        raise ValueError(
+            f"structure.c4 ({c4}) > GLS.C1 ({c1}): this combination is known "
+            "to reproducibly destabilize the explicit time-stepping of the "
+            "GLS psi-equation's structure-production term, collapsing "
+            "TKE/GLS to their numerical floor and killing mixing entirely "
+            "(verified across a full CD/dT/H0 sweep). Keep structure.c4 <= "
+            "GLS.C1."
+        )
+
+    u_inf = np.sqrt(2.0 * BFRC_U / (CD * str_a))
+    Pd = 0.5 * CD * str_a * u_inf ** 3
+    Pstr = RHO0 * H0 * Pd
+    delta_rho = R0 * TCOEF * temp_dT
+
+    if delta_rho <= 0.0:
+        raise ValueError("analytic_mixing_timescale requires initial.temp_dT > 0.")
+
+    tau_mix = G * delta_rho * H0 ** 2 / Pstr
+
+    return {
+        "u_inf": u_inf,
+        "Pd": Pd,
+        "Pstr": Pstr,
+        "delta_rho": delta_rho,
+        "tau_mix": tau_mix,
+    }
 
 
 def compute_time_vector(params: dict) -> np.ndarray:

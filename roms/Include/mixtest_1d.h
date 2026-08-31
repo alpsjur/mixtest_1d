@@ -15,7 +15,12 @@
 /* BASICS (from norkyst) */
 #define SOLVE3D            /* define if solving 3D primitive equations */
 #define DJ_GRADPS          /* Splines density  Jacobian (Shchepetkin, 2000) */
-#define NONLIN_EOS         /* define if using nonlinear equation of state */
+#undef  NONLIN_EOS         /* nonlinear (compressible) EOS -- off for idealized
+                               mixing-timescale analysis (Carpenter et al. 2016
+                               assumes a purely T,S-linear buoyancy, no pressure/
+                               compressibility contribution to density); the
+                               linear EOS is ROMS' default when NONLIN_EOS is
+                               undefined -- there is no separate LINEAR_EOS flag */
 #define SALINITY           /* define if using salinity */
 #define LIMIT_BSTRESS      /* Limit bottom stress to maintain bottom velocity direction */
 #define UV_QDRAG           /* turn ON quadratic bottom friction */

@@ -1,0 +1,38 @@
+# Variant for the mixing-timescale sensitivity sweep (Carpenter et al. 2016
+# style analysis, see templates/mixing_timescale_sweep.yaml).
+#
+# Baseline's str_a/BFRC_U combination gives tau_mix ~ 920 days (u_inf=0.1 m/s
+# but very weak structure area density), far too long for a practical sweep.
+# Here str_a and BFRC_U are both scaled up 100x relative to baseline, which
+# keeps u_inf ~ 0.1 m/s (a realistic tidal current) while bringing
+# tau_mix_theory into the 2-13 day range across the swept CD/temp_dT/H0
+# combinations (checked with analytic_mixing_timescale()).
+#
+# NTIMES/NHIS below are placeholders only -- tools/prep_mixing_timescale_sweep.py
+# overwrites NTIMES per run using analytic_mixing_timescale(), and NHIS is
+# kept fixed so all runs get hourly output regardless of total duration.
+
+run:
+  name: mixing_timescale
+
+structure:
+  str_a: 0.01
+  depth_zero_below: 1.0e+9   # keep str_a active over the full column
+
+bodyforce:
+  # u_inf ~ 0.1 m/s at CD=0.63 (weaker at CD=1.26) -- a representative
+  # background current speed for the Norwegian shelf (e.g. the Norwegian
+  # Coastal Current), not a tidal velocity. The body force is agnostic to
+  # what physically drives the flow (tidal, wind-driven, mean coastal
+  # current, ...); only its steady speed matters for the drag/mixing
+  # balance.
+  BFRC_U: 315.0   # -> 3.15e-5 m/s2 (100x baseline)
+  BFRC_V: 0.0
+
+time_stepping:
+  DT: 40.0
+  NHIS: 90        # history every hour (unchanged from baseline)
+  NTIMES: 30240   # placeholder; overwritten per-run by prep_mixing_timescale_sweep.py
+
+initial:
+  ubar0: 0.1      # start close to the expected steady-state speed
