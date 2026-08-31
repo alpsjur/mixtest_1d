@@ -1,9 +1,6 @@
 run:
   name: baseline
 
-ROMS: 
-  yaml_loc: /home/ansju8054/Documents/Code/havvind-mix/mixtest_1d/roms
-
 files:
   grd: mixtest_1d_grd.nc
   ini: mixtest_1d_ini.nc
@@ -16,6 +13,13 @@ grid:
   H0: 150.0     # uniform depth (m)
   DX: 800.0     # grid spacing xi (m)
   DY: 800.0     # grid spacing eta (m)
+
+
+ROMS:
+  # yaml_loc is always overwritten by prep_experiment.py to <ROOT_DIR>/roms
+  # (kept here only so the key exists before resolution).
+  yaml_loc: null
+
 
 GLS:            # gen closure
   P: 2.0
