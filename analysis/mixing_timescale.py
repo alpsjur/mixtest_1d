@@ -23,10 +23,56 @@ Across a sweep, plotting phi_star vs t_star for every run and checking
 whether the curves collapse (and cross ~0 near t_star=1) is the direct
 analogue of Carpenter et al.'s Fig 4b.
 
+Key findings from the 16-run CD x c4 x temp_dT x H0 sweep
+(sweeps/mixing_timescale/, see also plot_sensitivity()):
+
+  - tau_mix_diagnostic matches tau_mix_theory to within <1% for every run:
+    the analytic power-balance prediction (from the assumed steady
+    drag/body-force balance) correctly captures the *power input* scale,
+    independent of the GLS closure coefficient c4 -- as expected, since
+    u_inf/Pd only depend on CD/str_a/BFRC_U, not on the turbulence closure.
+
+  - The *dimensionless* mixing-completion time t_star_mix (first t_star at
+    which phi_star < 0.05) is NOT universal at ~1 as in Carpenter et al.'s
+    idealized model. It ranges ~0.45-0.73 across this sweep and depends
+    strongly on:
+      * structure.c4 (closure efficiency): t_star_mix is ~1.34x larger at
+        c4=0.97 than at c4=0.44 (consistently, for both H0). This is
+        counter-intuitive if c4 is thought of as "more structure-driven
+        turbulence production" -- but c4 multiplies the *psi*-equation
+        (length-scale/dissipation) production term, not the tke production
+        term directly, so a larger c4 actually *shrinks* the eddy length
+        scale / AKt for the same power input (confirmed via AKt magnitudes:
+        ~0.37 m2/s mean at c4=0.44 vs ~0.19 m2/s at c4=0.97 for the same
+        CD/dT/H0), giving slower, not faster, mixing.
+      * grid.H0 (pycnocline position): t_star_mix is ~0.83x smaller at
+        H0=150 than H0=75, because the thermocline centre (initial.temp_zt,
+        fixed at 40 m) sits at a different *relative* depth in the water
+        column for different H0 (53% down for H0=75 vs 27% down for
+        H0=150) -- a pycnocline closer to a boundary erodes faster under a
+        given (roughly depth-uniform) eddy diffusivity.
+    and negligibly on structure.CD or initial.temp_dT (both already fully
+    absorbed into the t_star/tau_mix normalization itself, as intended).
+
+  - The c4 and H0 effects on t_star_mix are cleanly multiplicative/
+    separable: t_star_mix(c4, H0) ~= A(c4) * B(H0) to within ~0.5% (e.g.
+    the H0=150/H0=75 ratio is ~0.828 for c4=0.44 and ~0.824 for c4=0.97;
+    the c4=0.97/c4=0.44 ratio is ~1.342 for H0=75 and ~1.336 for H0=150).
+
+  - structure.c4 must be <= GLS.C1 (see analytic_mixing_timescale in
+    utils/utils.py): c4 > C1 was tested (c4=1.4, with GLS.C1=1.0) and
+    reproducibly destabilizes the explicit stepping of the structure-
+    production term in the psi equation in *every* CD/dT/H0 combination,
+    collapsing TKE/GLS to their numerical floor and preventing any mixing.
+    This is flagged automatically (mixing_timescale()'s `unstable` field)
+    and excluded from plot_collapse(), but is a real limitation of the
+    current explicit STRUCTURE_MIXING/GLS coupling worth keeping in mind
+    for any future sweep design.
+
 Usage (single run):
     python analysis/mixing_timescale.py runs/<name>/resolved_config.yaml
 
-Usage (whole sweep, collapse plot):
+Usage (whole sweep, collapse plot + sensitivity plot):
     python analysis/mixing_timescale.py --sweep sweeps/mixing_timescale/manifest.yaml
 """
 import os
