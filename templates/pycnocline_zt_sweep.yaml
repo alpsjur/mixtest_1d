@@ -1,0 +1,53 @@
+sweep:
+  id: pycnocline length-scale test (temp_zt independent of H0)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # This sweep tests the open question from notes/mixing_timescale_analysis.md
+  # section 4.5/6: the pycnocline length scale L = sqrt(z_t*(H0-z_t)) was
+  # only tested with initial.temp_zt held fixed at 40 m while grid.H0 varied
+  # between 75/150 m, so "absolute depth of H0" and "relative position of
+  # the pycnocline" were confounded. Here temp_zt is varied *independently*
+  # of H0, using explicit (H0, temp_zt) pairs rather than a full cartesian
+  # product (many H0 x temp_zt combinations would place the thermocline too
+  # close to a boundary, given initial.temp_ht=10 requires roughly
+  # 20 < temp_zt < H0-20 for the tanh transition to stay clear of both
+  # boundaries).
+  #
+  # Pair design:
+  #   - H0=75,  temp_zt in {25, 35, 45, 55}   -> ratio zt/H0 = 0.33-0.73
+  #   - H0=150, temp_zt in {25, 45, 75, 115}  -> ratio zt/H0 = 0.17-0.77
+  # temp_zt=25 and temp_zt=45 are shared between both H0 values, isolating
+  # the pure "H0 changed, absolute pycnocline depth fixed" effect (as
+  # opposed to the original test's fixed-ratio-only comparison). temp_zt=75
+  # (H0=150) sits at mid-column; temp_zt=115 (H0=150) is a near-bed extreme.
+  pairs:
+    - {H0: 75.0, temp_zt: 25.0}
+    - {H0: 75.0, temp_zt: 35.0}
+    - {H0: 75.0, temp_zt: 45.0}
+    - {H0: 75.0, temp_zt: 55.0}
+    - {H0: 150.0, temp_zt: 25.0}
+    - {H0: 150.0, temp_zt: 45.0}
+    - {H0: 150.0, temp_zt: 75.0}
+    - {H0: 150.0, temp_zt: 115.0}
+
+  # structure.c4 kept at the same two values as the original sweep, to
+  # reconfirm that the c4/geometry effects are still separable once
+  # temp_zt is varied independently of H0 (not just re-tested at zt=40).
+  parameters:
+    structure.c4: [0.44, 0.97]
+
+  # CD and temp_dT held fixed (found to have negligible independent effect
+  # on the dimensionless mixing time in the original 16-run sweep).
+  fixed:
+    structure.CD: 0.63
+    initial.temp_dT: 10.0
+
+  run_name_template: "mixtauzt_c4{structure.c4}_H{grid.H0}_zt{initial.temp_zt}"
+
+  output_dir: "sweeps/pycnocline_zt"
+
+  # Slightly larger margin than the original sweep (2.5): near-boundary
+  # temp_zt values (e.g. H0=150/zt=25 or zt=115) may mix faster or slower
+  # in real time than the original zt=40 baseline, so allow more headroom.
+  ntimes_margin: 3.0

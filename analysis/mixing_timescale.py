@@ -102,13 +102,19 @@ def pycnocline_length_scale(params: dict) -> float:
     boundaries (surface and bed): L = sqrt(zt * (H0 - zt)).
 
     Empirically found to be a substantially better length scale than the
-    full water column depth H0 for nondimensionalizing the mixing time:
-    across a 16-run sweep varying grid.H0 (with initial.temp_zt fixed),
-    using L here instead of H0 in t_star reduces the coefficient of
-    variation of the empirical mixing-completion time t_star_mix (within
-    fixed structure.c4 groups) by a factor of ~3 (from CV~0.10 to
-    CV~0.03). See notes/mixing_timescale_analysis.md, section "Testing an
-    alternative length scale".
+    full water column depth H0 for nondimensionalizing the mixing time.
+    First found in a 16-run sweep varying grid.H0 (with initial.temp_zt
+    fixed at 40 m): using L here instead of H0 in t_star reduces the
+    coefficient of variation of the empirical mixing-completion time
+    t_star_mix (within fixed structure.c4 groups) by a factor of ~3 (from
+    CV~0.10 to CV~0.03). Subsequently confirmed over a wider, independent
+    sweep of grid.H0 and initial.temp_zt (sweeps/pycnocline_zt/): CV is
+    reduced by a factor of ~6 (from CV~0.16 to CV~0.03), and the geometric
+    mean specifically outperforms min(zt,H0-zt), max(zt,H0-zt), and the
+    harmonic mean (all of which are worse than plain H0 once zt varies
+    independently of H0). See notes/mixing_timescale_analysis.md, sections
+    "Testing an alternative length scale" and "Confirming the geometric-mean
+    form".
     """
     H0 = float(params["grid"]["H0"])
     zt = float(params["initial"]["temp_zt"])
