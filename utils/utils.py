@@ -485,12 +485,11 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
     c1 = cfg.get("GLS", {}).get("C1")
     if c4 is not None and c1 is not None and float(c4) > float(c1):
         raise ValueError(
-            f"structure.c4 ({c4}) > GLS.C1 ({c1}): this combination is known "
-            "to reproducibly destabilize the explicit time-stepping of the "
-            "GLS psi-equation's structure-production term, collapsing "
-            "TKE/GLS to their numerical floor and killing mixing entirely "
-            "(verified across a full CD/dT/H0 sweep). Keep structure.c4 <= "
-            "GLS.C1."
+            f"structure.c4 ({c4}) > GLS.C1 ({c1}). In Carpenter et al., c4 > C1 "
+            "corresponds to reduced structure-induced mixing efficiency "
+            "(c4 = C1 is the neutral point). In this implementation that regime "
+            "is also outside the validated/numerically robust range, so "
+            "analytic_mixing_timescale() rejects it."
         )
 
     u_inf = np.sqrt(2.0 * BFRC_U / (CD * str_a))

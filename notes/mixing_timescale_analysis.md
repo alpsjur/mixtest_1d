@@ -146,21 +146,22 @@ Plotting `φ*(t) = φ(t)/φ(0)` against the dimensionless time `t* = t·P_str_di
 
 However, unlike Carpenter et al.'s idealized time-dependent pycnocline model (where mixing completion occurs at `t* = 1` essentially by construction/definition), **mixing completes earlier here, at t* ≈ 0.45–0.76**, and — notably — this completion time is **not universal**: it varies systematically with two of the four swept parameters (see §4.4). This means `t* = 1` should be understood as a rough order-of-magnitude time scale for *this* parametrization/setup, not an exact universal threshold; the value at which mixing actually completes depends on lower-order details of the turbulence closure and geometry not captured by the leading-order power balance.
 
-### 4.3 Numerical instability at c4 > GLS.C1
 
-An initial version of this sweep included `structure.c4 = 1.4` (in addition to 0.44 and 0.97). **Every one of the 8 runs with `c4 = 1.4`** (all combinations of CD/dT/H0) showed **no mixing at all** — `φ*` stayed pinned near 1.0 for the entire run, despite `u` correctly reaching its analytic steady-state speed. Diagnosis:
+### 4.3 Interpretation and instability for `c4 > GLS.C1`
 
-- `tke` and `AKt` (eddy diffusivity) collapsed to their numerical floor values (`tke ≈ 1e-8` = `Kmin`, `AKt ≈ 1e-6`) at `c4 = 1.4`, whereas sibling runs at `c4 = 0.44`/`0.97` (same CD/dT/H0) gave healthy `AKt` values (0.19–1.6 m²/s).
-- Momentum/drag balance was unaffected — only the turbulence closure blew up.
+An initial version of the sweep included `structure.c4 = 1.4` in addition to `0.44` and `0.97`. All 8 runs with `c4 = 1.4` showed essentially **no mixing**: `φ*` remained near 1 throughout the run, even though the mean flow still spun up to the analytically expected drag-limited speed. Diagnostics showed that `tke` and `AKt` collapsed to their floor values (`tke ≈ Kmin`, `AKt ≈ 1e-6 m² s⁻¹`), while the momentum/drag balance remained correct. Thus the failure occurred in the turbulence closure, not in the drag formulation.
 
-This is consistent with a **numerical instability in the explicit time-stepping of the GLS ψ-equation's structure-production source term** (`gls_c4 · Pd_struct · gls/tke`) at high production rates relative to the model's fixed timestep (`DT = 40 s`). The user's physical insight resolved the ambiguity: in this GLS closure configuration, `GLS.C1 = 1.0` (the shear-production coefficient in the same ψ-equation), and `structure.c4` plays an analogous role for structure-driven production. **`c4` should not exceed `C1`** — setting `c4 = 1.4 > C1 = 1.0` pushes the total production term outside its numerically stable range for this timestep.
+This behavior can be interpreted in light of the original Carpenter et al. structure-mixing theory. In the homogeneous `k-ε` analysis given in their Eqs. (17)–(18), the additional coefficient `c4` enters the dissipation-equation source term analogously to the standard shear-production coefficient `c1`. Their analysis shows that the distinguished value is **`c4 = c1`**:
 
-**Action taken:**
-- `structure.c4 = 1.4` was removed from the sweep design (`templates/mixing_timescale_sweep.yaml`), documented with an explanatory comment.
-- `utils/utils.py::analytic_mixing_timescale()` now raises a `ValueError` if `structure.c4 > GLS.C1` is passed, to prevent this invalid/unstable regime from silently being swept again in the future.
-- `analysis/mixing_timescale.py::mixing_timescale()` also includes a runtime anomaly detector (flags a run as `unstable` if φ* hasn't decayed substantially despite t* being well past 1) as a second line of defense; `plot_collapse()` automatically excludes flagged runs with a printed console warning.
+- `c4 = c1`: structure production leaves the implied mixing efficiency unchanged;
+- `c4 < c1`: structure production **enhances** the mixing efficiency;
+- `c4 > c1`: structure production **reduces** the mixing efficiency.
 
-This is a genuine limitation of the current explicit STRUCTURE_MIXING/GLS coupling worth keeping in mind: the structure-production term's stability bound depends on the interplay of `c4`, the timestep `DT`, and the local production rate, and has not been explored further (e.g. whether reducing `DT` would restore stability at `c4 > C1`).
+Thus `c4` should be interpreted relative to `c1`, not as an independent free scaling. In the present GLS configuration, `GLS.C1 = 1.0`, so `c4 = 1.4` lies on the low-efficiency side of that theoretical threshold, whereas the successful sweep values (`0.44`, `0.97`) lie at or below it.
+
+Our results for the valid runs are consistent with this theory: increasing `c4` from `0.44` to `0.97` leaves the diagnosed power input unchanged but systematically slows the erosion of stratification, indicating a lower effective mixing efficiency. However, when pushed further to `c4 = 1.4 > C1`, the model does not merely become less efficient; instead, the explicit GLS update appears to become numerically unstable/stiff, with the structure-production term in the ψ-equation driving `tke` and `AKt` to their minimum values. We therefore interpret the `c4 = 1.4` results as an **implementation-level numerical collapse occurring within a theoretically low-efficiency regime**, not as a physically meaningful “zero-mixing” prediction of the closure itself.
+
+Accordingly, `c4 = 1.4` was removed from the production sweep, and `analytic_mixing_timescale()` now rejects `structure.c4 > GLS.C1` as outside the validated operating range of the present explicit STRUCTURE_MIXING/GLS coupling. This should be understood as a **practical restriction of the current implementation**, not as a universal theoretical prohibition on `c4 > c1` in all turbulence closures.
 
 ### 4.4 Why mixing completes early, and why it depends on c4 and H0
 
@@ -219,21 +220,24 @@ This is a genuinely useful refinement of the Carpenter et al. (2016) framework f
 
 ## 5. Summary of findings
 
-1. **The analytic power-balance prediction for τ_mix is accurate.** `tau_mix_diagnostic` matches `tau_mix_theory` to <1% across all 16 runs — the quasi-steady drag/body-force balance assumption holds, and the leading-order power scale `P_str = ρ₀·H·P_d` is correctly predicted from `CD`, `str_a`, `BFRC_U` alone, independent of the turbulence closure.
-2. **The dimensionless collapse from Carpenter et al. (2016) reproduces well** in this idealized 1D setup — `φ*(t*)` collapses across all 16 valid parameter combinations.
-3. **The specific value of `t*` at which mixing completes is not universal**, unlike the idealized `t* = 1` in Carpenter's own model. Using the original `H0`-based `t*`, it ranges ~0.45–0.76 and depends systematically (and separably) on:
-   - the GLS closure coefficient `c4` (higher `c4` → slower mixing, via reduced eddy diffusivity from enhanced dissipation-equation production), and
-   - the pycnocline's relative position in the water column (set by `H0` here, with `temp_zt` fixed — pycnocline closer to a boundary → faster mixing).
-4. **Replacing `H0` with a pycnocline-based length scale, `L = sqrt(z_t·(H0−z_t))`, removes most of the residual `H0`-dependence** in the dimensionless mixing-completion time (CV reduced by ~3x). This suggests the pycnocline's distance to the boundaries, not the total water column depth, is the more physically appropriate length scale for this parametrization when the pycnocline sits at a fixed absolute depth — as is realistic for the Norwegian shelf, where the pycnocline depth is set by seasonal thermal forcing rather than local bathymetry.
-5. **A hard numerical stability constraint exists: `structure.c4` must not exceed `GLS.C1`.** Exceeding it collapses TKE/GLS to their numerical floor and eliminates mixing entirely, a purely numerical artifact of the explicit time-stepping of the structure-production source term — not a physical result. This is now enforced by a `ValueError` in `analytic_mixing_timescale()` and flagged/excluded automatically in `plot_collapse()`.
-6. **CD and temp_dT have negligible independent effect on the dimensionless mixing time** — both are already fully absorbed into the `t*`/`τ_mix` normalization, exactly as the theory predicts.
+1. **The analytic power-balance prediction for `τ_mix` is accurate.** `tau_mix_diagnostic` matches `tau_mix_theory` to <1% across all 16 valid runs, confirming that the quasi-steady drag/body-force balance is correctly captured and that the leading-order power scale `P_str = ρ₀·H·P_d` is set by `CD`, `str_a`, and `BFRC_U` alone, independent of how the turbulence closure subsequently partitions that power into mixing versus dissipation.
+
+2. **The dimensionless collapse from Carpenter et al. (2016) reproduces well** in this idealized 1D setup: `φ*(t*)` collapses across all 16 valid parameter combinations when plotted against the nondimensional time `t* = t·P_str/(g·Δρ·H²)`.
+
+3. **The value of `t*` at which mixing completes is not universal in this implementation.** Unlike the idealized `t* = 1` reference scaling in Carpenter et al.'s pycnocline model, mixing here completes at `t* ≈ 0.45–0.76`, and that completion time depends systematically on lower-order closure and geometry effects not contained in the leading-order power balance. In particular:
+   - **`c4` matters because it changes mixing efficiency, not power input.** Carpenter et al.'s homogeneous closure analysis identifies `c4 = C1` as the neutral point: `c4 < C1` enhances the implied mixing efficiency, while `c4 > C1` reduces it. Consistent with that theory, increasing `c4` from `0.44` to `0.97` slows the erosion of stratification at fixed diagnosed `P_d`, indicating that less of the extracted power is converted into effective buoyancy mixing.
+   - **`H0` matters here through pycnocline position.** With `temp_zt` fixed, changing `H0` changes the pycnocline's relative position within the water column; in these runs, a pycnocline closer to a boundary mixes out sooner in nondimensional time than one located nearer mid-column.
+
+4. **Replacing `H0` with a pycnocline-based length scale, `L = sqrt(z_t·(H0−z_t))`, removes most of the residual `H0`-dependence** in the dimensionless mixing-completion time (CV reduced by ~3x, see §4.5). This suggests the pycnocline's distance to the boundaries, not the total water column depth, is the more physically appropriate length scale for this parametrization when the pycnocline sits at a fixed absolute depth — as is realistic for the Norwegian shelf, where the pycnocline depth is set by seasonal thermal forcing rather than local bathymetry.
+
+5. **`c4 > C1` should be interpreted as a theoretically low-efficiency regime, not merely a numerical anomaly.** In Carpenter et al., `c4 = C1` is the distinguished value at which structure-induced production leaves the implied mixing efficiency unchanged; `c4 > C1` reduces that efficiency, while `c4 < C1` enhances it. In the present explicit STRUCTURE_MIXING/GLS implementation, pushing into the `c4 > C1` regime (`c4 = 1.4 > 1.0`) did not just make mixing weaker: it caused `tke`, `gls`, and `AKt` to collapse to floor values, so the regime is numerically unvalidated in practice. We therefore restrict the validated sweep range to `c4 ≤ GLS.C1`, enforced by a `ValueError` in `analytic_mixing_timescale()` and by anomaly flagging in `plot_collapse()`. This should be understood as a **practical restriction of the current implementation**, not as a universal theoretical prohibition on `c4 > C1`.
+
+6. **`CD` and `temp_dT` have negligible independent effect on the nondimensional mixing curves once time is scaled by the Carpenter power-balance timescale.** Their primary influence is already absorbed into `P_str`, `Δρ`, and therefore `t*` / `τ_mix`, exactly as the leading-order theory predicts.
 
 ## 6. Future work / open questions
 
 - **Vary `temp_zt` independently of `H0`** to properly test the `L = sqrt(z_t·(H0−z_t))` pycnocline length scale from §4.5 over a wider range (only 2 values of `H0` at one fixed `z_t` were tested here) and confirm the geometric-mean form specifically (vs. other candidate functions of `z_t` and `H0−z_t`).
-- **Investigate the `c4 > GLS.C1` instability further** (e.g. does reducing `DT` restore stability at higher `c4`? Is there a general stability criterion relating `c4`, `DT`, and the local production rate that could be derived analytically, similar to the existing drag-term stability discussion in `roms/IMPLEMENTATION_STRUCTURE_MIXING.md` §12?).
 - **Sweep `c4` more finely between 0 and `GLS.C1`** to map out the `A(c4)` dependence more precisely (only 2 points were tested here).
-- **Test other GLS closure choices** (e.g. `k`-ε via `configs/variants/k-e.yaml`, which uses `GLS.C1 = 1.44`) to see whether the `c4`-dependence and the `c4 ≤ C1` stability bound are specific to this closure or general.
 - **Consider whether `t*_mix ≈ A(c4)·B(H0)` extends to a wider parameter range** or breaks down (e.g. at very shallow/deep `H0`, or very small `c4`).
 
 ## 7. Code and artifacts
