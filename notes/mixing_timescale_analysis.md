@@ -140,7 +140,7 @@ For every run, `tau_mix_diagnostic` (computed from the model's own diagnosed `P_
 
 ### 4.2 The dimensionless collapse: φ*(t*)
 
-![Mixing timescale collapse](../figures/mixing_timescale_collapse_mixing_timescale.png)
+![Mixing timescale collapse](../figures/mixing_timescale_collapse_mixing_timescale_H0.png)
 
 Plotting `φ*(t) = φ(t)/φ(0)` against the dimensionless time `t* = t·P_str_diag/(g·Δρ·H²)` for all 16 valid runs produces a tight collapse — the direct analogue of Carpenter et al.'s Fig 4b. All 16 curves fall in a narrow band and decay from `φ* = 1` to `φ* ≈ 0` over a similar range of `t*`.
 
@@ -164,7 +164,7 @@ This is a genuine limitation of the current explicit STRUCTURE_MIXING/GLS coupli
 
 ### 4.4 Why mixing completes early, and why it depends on c4 and H0
 
-![Mixing-completion sensitivity](../figures/mixing_timescale_sensitivity_mixing_timescale.png)
+![Mixing-completion sensitivity](../figures/mixing_timescale_sensitivity_mixing_timescale_H0.png)
 
 To quantify the deviation from Carpenter's universal `t* = 1`, we define an **empirical dimensionless mixing-completion time** `t*_mix`: the first `t*` at which `φ* < 0.05` (i.e. stratification potential energy has dropped to <5% of its initial value). Averaging over the two values of `CD` and `temp_dT` (which have negligible effect once time is nondimensionalized — see the flat rows within each `c4`/`H0` group in the table above), `t*_mix` depends cleanly on `c4` and `H0`:
 
@@ -177,11 +177,42 @@ Two effects, cleanly separable:
 
 1. **Closure coefficient `c4`:** `t*_mix` is consistently ~1.34–1.36x *larger* (i.e. mixing takes longer, relative to the dimensionless time scale) at `c4 = 0.97` than at `c4 = 0.44`. This is initially counter-intuitive — one might expect a larger structure-production coefficient to produce *faster* mixing. But `c4` multiplies the production term in the **ψ (dissipation/length-scale) equation**, not the TKE equation directly. A larger `c4` increases the dissipation rate of turbulent kinetic energy relative to its production, which *shrinks* the turbulent length scale and hence `AKt` for the same power input `P_d`. This was confirmed directly: mean `AKt` over the water column (last half of the run) was ~0.37 m²/s at `c4 = 0.44` vs. ~0.19 m²/s at `c4 = 0.97`, for otherwise identical `CD`/`dT`/`H0` — i.e. roughly half the eddy diffusivity at the higher `c4`, consistent with the ~1.35x longer mixing time.
 
-2. **Water column depth `H0` (pycnocline position):** `t*_mix` is consistently ~0.82–0.83x *smaller* (mixing completes sooner, relative to t*) at `H0 = 150` m than at `H0 = 75` m. The thermocline centre depth (`initial.temp_zt = 40` m, fixed across the sweep) sits at a different *relative* position in the water column depending on `H0`: 53% of the way down for `H0 = 75` m, but only 27% of the way down for `H0 = 150` m. A pycnocline positioned closer to a boundary (surface or bed) erodes faster under a roughly depth-uniform eddy diffusivity than one centered mid-column, because it has less distance to homogenize toward the nearer boundary and benefits from boundary-adjacent turbulence. Since the pycnocline depth `temp_zt` was not itself swept, this session cannot yet distinguish "absolute pycnocline depth" from "relative pycnocline position" as the controlling variable — see §5 (future work).
+2. **Water column depth `H0` (pycnocline position):** `t*_mix` is consistently ~0.82–0.83x *smaller* (mixing completes sooner, relative to t*) at `H0 = 150` m than at `H0 = 75` m. The thermocline centre depth (`initial.temp_zt = 40` m, fixed across the sweep) sits at a different *relative* position in the water column depending on `H0`: 53% of the way down for `H0 = 75` m, but only 27% of the way down for `H0 = 150` m. A pycnocline positioned closer to a boundary (surface or bed) erodes faster under a roughly depth-uniform eddy diffusivity than one centered mid-column, because it has less distance to homogenize toward the nearer boundary and benefits from boundary-adjacent turbulence. Since the pycnocline depth `temp_zt` was not itself swept, this session could not initially distinguish "absolute pycnocline depth" from "relative pycnocline position" as the controlling variable — resolved in §4.5 below by testing an alternative length scale.
 
 The two effects multiply cleanly: e.g. `t*_mix(c4=0.97, H0=150) / t*_mix(c4=0.97, H0=75) = 0.604/0.733 = 0.824`, matching `t*_mix(c4=0.44, H0=150)/t*_mix(c4=0.44, H0=75) = 0.452/0.546 = 0.828` to within 0.5%. Likewise the `c4` ratio is ~1.342 at `H0=75` and ~1.336 at `H0=150`. This separability suggests `t*_mix ≈ A(c4) · B(H0)` to good approximation across the tested range, though this has only been checked over 2 values of each parameter and should not be over-generalized.
 
-### 4.5 Confirmed conservation and numerical health
+### 4.5 Testing an alternative length scale: pycnocline position instead of H0
+
+The `H0` dependence found in §4.4 raises a natural question: Carpenter et al.'s `t* = t·P_str/(g·Δρ·H²)` uses the **full water column depth** `H` as the length scale that sets the dimensionless mixing time. But physically, what actually has to be eroded is the pycnocline itself — so a length scale tied to the **pycnocline's position within the column** might be more appropriate than the total depth, especially when (as here) `H0` is varied while the pycnocline depth `temp_zt` is held fixed.
+
+**Candidate length scale tested:** the geometric mean of the pycnocline centre's distances to the two boundaries,
+
+```
+L = sqrt(z_t · (H0 − z_t))
+```
+
+(implemented as `pycnocline_length_scale()` in `analysis/mixing_timescale.py`), used in place of `H0` in both `t*` and `τ_mix`. Several other candidates were also tried for comparison — the distance to the *nearer* boundary alone (`min(z_t, H0−z_t)`), the distance to the *farther* boundary alone (`max(z_t, H0−z_t)`), and the harmonic mean — but all of these gave a *worse* collapse than `H0` itself. Only the geometric mean improved on it.
+
+**Result:** grouping runs by `structure.c4` (averaging over `CD`/`temp_dT`, which have negligible effect as before) and comparing the coefficient of variation (CV = std/mean) of the empirical `t*_mix` across the two `H0` values:
+
+| Length scale `L` | CV at c4=0.44 | CV at c4=0.97 |
+|---|---|---|
+| `H0` (original) | 0.096 | 0.098 |
+| `sqrt(z_t·(H0−z_t))` (pycnocline) | 0.031 | 0.030 |
+
+Using the pycnocline-based length scale reduces the residual `H0`-driven spread in `t*_mix` by **a factor of ~3**, for both values of `c4`. Visually, plotting `φ*(t*)` with each length scale (`analysis/mixing_timescale.py --length-scale {H0,pycnocline}`) makes the improvement clear:
+
+![Length scale comparison](../figures/mixing_timescale_length_scale_comparison.png)
+
+*(Left: original `t*` using `H0`, colored by `c4`/`H0` group — note `H0=75` and `H0=150` runs form visibly separate sub-clusters within each `c4` color. Right: `t*` using the pycnocline length scale — the `H0=75`/`H0=150` sub-clusters collapse onto each other almost completely, leaving only the `c4` grouping.)*
+
+**Interpretation:** the full water column depth `H0` is not, in general, the "correct" length scale for the dimensionless mixing time when the pycnocline sits at a fixed absolute depth rather than scaling with `H0`. The geometric mean of the pycnocline's two boundary distances captures the relevant "how far must this stratification travel to homogenize toward a boundary" scale far better than the total depth does — consistent with viscous/diffusive-erosion problems in general, where the natural length scale is tied to the structure being eroded (the pycnocline and its distances to the boundaries), not the size of the overall domain.
+
+This is a genuinely useful refinement of the Carpenter et al. (2016) framework for cases like this one, where offshore structures span the full water column but the pycnocline itself sits at a roughly fixed absolute depth (set by seasonal thermal forcing) regardless of local bathymetric depth — exactly the situation on much of the Norwegian shelf. `analysis/mixing_timescale.py` now supports both length-scale choices via a `length_scale=` argument / `--length-scale` CLI flag, defaulting to `"H0"` for backward compatibility with Carpenter et al.'s original definition.
+
+**Caveat:** this was tested over only 2 values of `H0` (75 m and 150 m) at one fixed `z_t = 40` m, so the exact functional form (geometric mean, specifically) is not yet rigorously established — it is the best of the handful of simple candidates tried, but a proper test would vary `z_t` independently of `H0` across a wider range (see §6, future work).
+
+### 4.6 Confirmed conservation and numerical health
 
 - Volume-averaged density is conserved to ~1e-7 relative error over the full run duration in every case (justifying the "no reference run needed" simplification in §2.1).
 - `φ*(t)` settles cleanly to ~0 (numerical noise floor ~1e-6) with no overshoot or oscillation in any of the 16 valid runs, confirming the diagnostic pipeline and the underlying mixing physics are well-behaved once `c4 ≤ GLS.C1`.
@@ -190,15 +221,16 @@ The two effects multiply cleanly: e.g. `t*_mix(c4=0.97, H0=150) / t*_mix(c4=0.97
 
 1. **The analytic power-balance prediction for τ_mix is accurate.** `tau_mix_diagnostic` matches `tau_mix_theory` to <1% across all 16 runs — the quasi-steady drag/body-force balance assumption holds, and the leading-order power scale `P_str = ρ₀·H·P_d` is correctly predicted from `CD`, `str_a`, `BFRC_U` alone, independent of the turbulence closure.
 2. **The dimensionless collapse from Carpenter et al. (2016) reproduces well** in this idealized 1D setup — `φ*(t*)` collapses across all 16 valid parameter combinations.
-3. **The specific value of `t*` at which mixing completes is not universal**, unlike the idealized `t* = 1` in Carpenter's own model. Here it ranges ~0.45–0.76 and depends systematically (and separably) on:
+3. **The specific value of `t*` at which mixing completes is not universal**, unlike the idealized `t* = 1` in Carpenter's own model. Using the original `H0`-based `t*`, it ranges ~0.45–0.76 and depends systematically (and separably) on:
    - the GLS closure coefficient `c4` (higher `c4` → slower mixing, via reduced eddy diffusivity from enhanced dissipation-equation production), and
    - the pycnocline's relative position in the water column (set by `H0` here, with `temp_zt` fixed — pycnocline closer to a boundary → faster mixing).
-4. **A hard numerical stability constraint exists: `structure.c4` must not exceed `GLS.C1`.** Exceeding it collapses TKE/GLS to their numerical floor and eliminates mixing entirely, a purely numerical artifact of the explicit time-stepping of the structure-production source term — not a physical result. This is now enforced by a `ValueError` in `analytic_mixing_timescale()` and flagged/excluded automatically in `plot_collapse()`.
-5. **CD and temp_dT have negligible independent effect on the dimensionless mixing time** — both are already fully absorbed into the `t*`/`τ_mix` normalization, exactly as the theory predicts.
+4. **Replacing `H0` with a pycnocline-based length scale, `L = sqrt(z_t·(H0−z_t))`, removes most of the residual `H0`-dependence** in the dimensionless mixing-completion time (CV reduced by ~3x). This suggests the pycnocline's distance to the boundaries, not the total water column depth, is the more physically appropriate length scale for this parametrization when the pycnocline sits at a fixed absolute depth — as is realistic for the Norwegian shelf, where the pycnocline depth is set by seasonal thermal forcing rather than local bathymetry.
+5. **A hard numerical stability constraint exists: `structure.c4` must not exceed `GLS.C1`.** Exceeding it collapses TKE/GLS to their numerical floor and eliminates mixing entirely, a purely numerical artifact of the explicit time-stepping of the structure-production source term — not a physical result. This is now enforced by a `ValueError` in `analytic_mixing_timescale()` and flagged/excluded automatically in `plot_collapse()`.
+6. **CD and temp_dT have negligible independent effect on the dimensionless mixing time** — both are already fully absorbed into the `t*`/`τ_mix` normalization, exactly as the theory predicts.
 
 ## 6. Future work / open questions
 
-- **Vary `temp_zt` independently of `H0`** to disentangle "absolute pycnocline depth" from "relative pycnocline position" as the driver of the `H0` effect in §4.4.
+- **Vary `temp_zt` independently of `H0`** to properly test the `L = sqrt(z_t·(H0−z_t))` pycnocline length scale from §4.5 over a wider range (only 2 values of `H0` at one fixed `z_t` were tested here) and confirm the geometric-mean form specifically (vs. other candidate functions of `z_t` and `H0−z_t`).
 - **Investigate the `c4 > GLS.C1` instability further** (e.g. does reducing `DT` restore stability at higher `c4`? Is there a general stability criterion relating `c4`, `DT`, and the local production rate that could be derived analytically, similar to the existing drag-term stability discussion in `roms/IMPLEMENTATION_STRUCTURE_MIXING.md` §12?).
 - **Sweep `c4` more finely between 0 and `GLS.C1`** to map out the `A(c4)` dependence more precisely (only 2 points were tested here).
 - **Test other GLS closure choices** (e.g. `k`-ε via `configs/variants/k-e.yaml`, which uses `GLS.C1 = 1.44`) to see whether the `c4`-dependence and the `c4 ≤ C1` stability bound are specific to this closure or general.
@@ -213,16 +245,20 @@ The two effects multiply cleanly: e.g. `t*_mix(c4=0.97, H0=150) / t*_mix(c4=0.97
 | `templates/mixing_timescale_sweep.yaml` | Sweep definition (CD x c4 x temp_dT x H0). |
 | `configs/variants/mixing_timescale.yaml` | Scaled `str_a`/`BFRC_U` variant to bring τ_mix into a practical 2–13 day range. |
 | `tools/prep_mixing_timescale_sweep.py` | Prepares all sweep runs, deriving per-run `NTIMES` from `analytic_mixing_timescale()`. |
-| `analysis/mixing_timescale.py` | Per-run diagnostics (`mixing_timescale()`), sweep summary (`summarize_sweep()`), collapse plot (`plot_collapse()`), and closure-sensitivity plot (`plot_sensitivity()`). |
+| `analysis/mixing_timescale.py` | Per-run diagnostics (`mixing_timescale()`), sweep summary (`summarize_sweep()`), collapse plot (`plot_collapse()`), and closure-sensitivity plot (`plot_sensitivity()`); all three accept a `length_scale` argument (`"H0"` or `"pycnocline"`, see §4.5), and `pycnocline_length_scale()` implements the alternative length scale itself. |
 | `sweeps/mixing_timescale/manifest.yaml` / `.csv` | Generated manifest of all 16 prepared/completed runs (not committed to git; regenerable via `tools/prep_mixing_timescale_sweep.py`). |
 | `runs/mixtau_*/` | 16 completed run directories (not committed to git). |
-| `figures/mixing_timescale_collapse_mixing_timescale.png` | The φ*(t*) collapse plot (§4.2). |
-| `figures/mixing_timescale_sensitivity_mixing_timescale.png` | The t*_mix vs. c4/H0 sensitivity plot (§4.4). |
+| `figures/mixing_timescale_collapse_mixing_timescale_H0.png` | The φ*(t*) collapse plot using `L=H0` (§4.2). |
+| `figures/mixing_timescale_sensitivity_mixing_timescale_H0.png` | The t*_mix vs. c4/H0 sensitivity plot using `L=H0` (§4.4). |
+| `figures/mixing_timescale_collapse_mixing_timescale_pycnocline.png` | The φ*(t*) collapse plot using `L=sqrt(zt(H0-zt))` (§4.5). |
+| `figures/mixing_timescale_sensitivity_mixing_timescale_pycnocline.png` | The t*_mix vs. c4/H0 sensitivity plot using `L=sqrt(zt(H0-zt))`, showing the H0-grouping collapse away (§4.5). |
+| `figures/mixing_timescale_length_scale_comparison.png` | Side-by-side comparison of both length scale choices (§4.5). |
 
 To regenerate this analysis from scratch:
 
 ```bash
 python tools/prep_mixing_timescale_sweep.py templates/mixing_timescale_sweep.yaml
 python tools/run_sweep.py sweeps/mixing_timescale/manifest.yaml
-python analysis/mixing_timescale.py --sweep sweeps/mixing_timescale/manifest.yaml --save
+python analysis/mixing_timescale.py --sweep sweeps/mixing_timescale/manifest.yaml --length-scale H0 --save
+python analysis/mixing_timescale.py --sweep sweeps/mixing_timescale/manifest.yaml --length-scale pycnocline --save
 ```

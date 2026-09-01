@@ -96,8 +96,28 @@ from utils.utils import (
 )
 
 
+def pycnocline_length_scale(params: dict) -> float:
+    """
+    Geometric mean of the pycnocline centre's distances to the two
+    boundaries (surface and bed): L = sqrt(zt * (H0 - zt)).
+
+    Empirically found to be a substantially better length scale than the
+    full water column depth H0 for nondimensionalizing the mixing time:
+    across a 16-run sweep varying grid.H0 (with initial.temp_zt fixed),
+    using L here instead of H0 in t_star reduces the coefficient of
+    variation of the empirical mixing-completion time t_star_mix (within
+    fixed structure.c4 groups) by a factor of ~3 (from CV~0.10 to
+    CV~0.03). See notes/mixing_timescale_analysis.md, section "Testing an
+    alternative length scale".
+    """
+    H0 = float(params["grid"]["H0"])
+    zt = float(params["initial"]["temp_zt"])
+    return np.sqrt(zt * (H0 - zt))
+
+
 def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
-                      unmixed_threshold: float = 0.5, tstar_check: float = 1.5) -> dict:
+                      unmixed_threshold: float = 0.5, tstar_check: float = 1.5,
+                      length_scale: str = "H0") -> dict:
     """
     Compute phi(t), Pstr(t), and the theoretical/diagnostic mixing time
     scales for a single completed run.
@@ -121,6 +141,13 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
         structure source term collapses TKE/GLS to their numerical floor,
         killing mixing entirely -- not a physical result, and would
         otherwise silently distort the phi_star(t_star) collapse plot.
+    length_scale : str
+        Which length scale to use for nondimensionalizing time and tau_mix:
+        "H0" (Carpenter et al.'s original choice, the full water column
+        depth) or "pycnocline" (see pycnocline_length_scale() -- the
+        geometric mean of the pycnocline's distances to the two
+        boundaries, found empirically to collapse the sweep much better
+        when grid.H0 is varied at fixed initial.temp_zt).
 
     Returns
     -------
@@ -147,10 +174,17 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     delta_rho = theory["delta_rho"]
     H0 = float(params["grid"]["H0"])
 
-    tau_mix_diagnostic = G * delta_rho * H0 ** 2 / Pstr_diag if Pstr_diag > 0 else np.nan
+    if length_scale == "H0":
+        L = H0
+    elif length_scale == "pycnocline":
+        L = pycnocline_length_scale(params)
+    else:
+        raise ValueError(f"Unknown length_scale {length_scale!r}: use 'H0' or 'pycnocline'.")
+
+    tau_mix_diagnostic = G * delta_rho * L ** 2 / Pstr_diag if Pstr_diag > 0 else np.nan
 
     t_seconds = days * 86400.0
-    t_star = t_seconds * Pstr_diag / (G * delta_rho * H0 ** 2)
+    t_star = t_seconds * Pstr_diag / (G * delta_rho * L ** 2)
 
     # Anomaly / instability flag (see docstring).
     unstable = False
@@ -184,7 +218,7 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     }
 
 
-def summarize_sweep(manifest_path: str, plateau_frac: float = 0.5) -> list:
+def summarize_sweep(manifest_path: str, plateau_frac: float = 0.5, length_scale: str = "H0") -> list:
     """
     Compute mixing_timescale() for every completed run in a sweep manifest.
 
@@ -201,7 +235,7 @@ def summarize_sweep(manifest_path: str, plateau_frac: float = 0.5) -> list:
         if not os.path.isfile(resolved_config):
             continue
         try:
-            result = mixing_timescale(resolved_config, plateau_frac=plateau_frac)
+            result = mixing_timescale(resolved_config, plateau_frac=plateau_frac, length_scale=length_scale)
         except Exception as e:
             print(f"Skipping {r.get('run_name')}: {e}")
             continue
@@ -217,7 +251,7 @@ def summarize_sweep(manifest_path: str, plateau_frac: float = 0.5) -> list:
     return rows
 
 
-def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5):
+def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5, length_scale: str = "H0"):
     """
     Plot the empirical dimensionless mixing-completion time t_star_mix
     (first t_star at which phi_star < 0.05) against structure.c4, grouped
@@ -225,6 +259,11 @@ def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5):
     found to have negligible effect once time is nondimensionalized by
     Pstr_diag). This isolates the closure-efficiency sensitivity that the
     simple Carpenter et al. power-based tau_mix scaling does not capture.
+
+    With length_scale="pycnocline" the residual grouping by grid.H0 mostly
+    disappears (see pycnocline_length_scale() and
+    notes/mixing_timescale_analysis.md) -- kept as an argument here so this
+    plot can be used to visually confirm that collapse.
     """
     import matplotlib.pyplot as plt
     from collections import defaultdict
@@ -236,7 +275,7 @@ def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5):
         if not os.path.isfile(resolved_config):
             continue
         try:
-            result = mixing_timescale(resolved_config, plateau_frac=plateau_frac)
+            result = mixing_timescale(resolved_config, plateau_frac=plateau_frac, length_scale=length_scale)
         except Exception as e:
             print(f"Skipping {r.get('run_name')}: {e}")
             continue
@@ -263,18 +302,24 @@ def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5):
 
     ax.set_xlabel(r"structure.c4")
     ax.set_ylabel(r"$t^*_{mix}$ (dimensionless time for $\phi^*<0.05$)")
-    ax.set_title("Mixing-completion sensitivity to closure coefficient c4")
+    ax.set_title(f"Mixing-completion sensitivity to closure coefficient c4 (L={length_scale})")
     ax.grid(True, alpha=0.3)
     ax.legend()
     return ax
 
 
-def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5):
+def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5, length_scale: str = "H0"):
     """
     Plot phi_star(t_star) for every completed run in a sweep manifest onto
     one axis, to check for the Carpenter-et-al.-style collapse. Adds a
     vertical reference line at t_star=1 (the theoretical "fully mixed"
     point) and a horizontal line at phi_star=0.
+
+    length_scale="H0" reproduces Carpenter et al.'s original choice (the
+    full water column depth). length_scale="pycnocline" uses
+    pycnocline_length_scale() instead -- found empirically to give a much
+    tighter collapse when grid.H0 varies at fixed initial.temp_zt (see
+    notes/mixing_timescale_analysis.md).
     """
     import matplotlib.pyplot as plt
     try:
@@ -296,7 +341,7 @@ def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5):
         if not os.path.isfile(resolved_config):
             continue
         try:
-            result = mixing_timescale(resolved_config, plateau_frac=plateau_frac)
+            result = mixing_timescale(resolved_config, plateau_frac=plateau_frac, length_scale=length_scale)
         except Exception as e:
             print(f"Skipping {r.get('run_name')}: {e}")
             continue
@@ -322,9 +367,12 @@ def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5):
 
     ax.axvline(1.0, color="k", linestyle="--", linewidth=1, label=r"$t^*=1$")
     ax.axhline(0.0, color="k", linestyle=":", linewidth=1)
-    ax.set_xlabel(r"$t^* = t\,P_{str}/(g\,\Delta\rho\,H^2)$")
+    if length_scale == "H0":
+        ax.set_xlabel(r"$t^* = t\,P_{str}/(g\,\Delta\rho\,H_0^2)$")
+    else:
+        ax.set_xlabel(r"$t^* = t\,P_{str}/(g\,\Delta\rho\,L^2)$, $L=\sqrt{z_t(H_0-z_t)}$")
     ax.set_ylabel(r"$\phi(t)/\phi(0)$")
-    ax.set_title("Mixing timescale collapse")
+    ax.set_title(f"Mixing timescale collapse (L={length_scale})")
     ax.grid(True, alpha=0.3)
     ax.legend(fontsize=7, loc="best")
     return ax
@@ -336,29 +384,33 @@ def main():
     parser.add_argument("resolved_config", nargs="?", help="Path to a single run's resolved_config.yaml")
     parser.add_argument("--sweep", type=str, help="Path to a sweep manifest.yaml (collapse plot)")
     parser.add_argument("--plateau-frac", type=float, default=0.5)
+    parser.add_argument("--length-scale", choices=["H0", "pycnocline"], default="H0",
+                         help="Length scale for nondimensionalizing t_star/tau_mix (default: H0, "
+                              "Carpenter et al.'s original choice; 'pycnocline' uses "
+                              "sqrt(zt*(H0-zt)), which collapses better when H0 is varied)")
     parser.add_argument("--save", action="store_true")
     args = parser.parse_args()
 
     if args.sweep:
-        ax = plot_collapse(args.sweep, plateau_frac=args.plateau_frac)
+        ax = plot_collapse(args.sweep, plateau_frac=args.plateau_frac, length_scale=args.length_scale)
         import matplotlib.pyplot as plt
         if args.save:
-            filename = f"figures/mixing_timescale_collapse_{os.path.basename(os.path.dirname(args.sweep))}.png"
+            filename = f"figures/mixing_timescale_collapse_{os.path.basename(os.path.dirname(args.sweep))}_{args.length_scale}.png"
             os.makedirs(os.path.dirname(filename), exist_ok=True)
             plt.savefig(filename)
             print(f"Plot saved to {filename}")
         else:
             plt.show()
 
-        ax2 = plot_sensitivity(args.sweep, plateau_frac=args.plateau_frac)
+        ax2 = plot_sensitivity(args.sweep, plateau_frac=args.plateau_frac, length_scale=args.length_scale)
         if args.save:
-            filename2 = f"figures/mixing_timescale_sensitivity_{os.path.basename(os.path.dirname(args.sweep))}.png"
+            filename2 = f"figures/mixing_timescale_sensitivity_{os.path.basename(os.path.dirname(args.sweep))}_{args.length_scale}.png"
             plt.savefig(filename2)
             print(f"Plot saved to {filename2}")
         else:
             plt.show()
     elif args.resolved_config:
-        result = mixing_timescale(args.resolved_config, plateau_frac=args.plateau_frac)
+        result = mixing_timescale(args.resolved_config, plateau_frac=args.plateau_frac, length_scale=args.length_scale)
         print(f"tau_mix_theory:      {result['tau_mix_theory']/86400.0:.3f} days")
         print(f"tau_mix_diagnostic:  {result['tau_mix_diagnostic']/86400.0:.3f} days")
         print(f"Pstr_diag:           {result['Pstr_diag']:.6g} W/m2")
