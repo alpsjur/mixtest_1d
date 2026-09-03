@@ -207,7 +207,26 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     # structure.CD or initial.temp_dT (which only set the power/buoyancy
     # scales already absorbed into t_star itself).
     below = np.where(phi_star < 0.05)[0]
-    t_star_mix = float(t_star[below[0]]) if len(below) else np.nan
+    if len(below):
+        i1 = below[0]
+        if i1 > 0:
+            # Linear interpolation between the last sample >= 0.05 and the
+            # first sample < 0.05 for sub-output-step resolution -- with
+            # hourly history output (NHIS=90, DT=40s), the raw t_star grid
+            # spacing (~0.01 in t_star for the sweeps in this repo) can be
+            # too coarse to resolve small A(c4) differences at low c4 (see
+            # notes/mixing_timescale_analysis.md, c4 fine-sweep section),
+            # where several adjacent c4 values would otherwise land on the
+            # same discrete output timestep and appear identical.
+            i0 = i1 - 1
+            x0, x1 = phi_star[i0], phi_star[i1]
+            t0, t1 = t_star[i0], t_star[i1]
+            frac = (0.05 - x0) / (x1 - x0) if x1 != x0 else 0.0
+            t_star_mix = float(t0 + frac * (t1 - t0))
+        else:
+            t_star_mix = float(t_star[i1])
+    else:
+        t_star_mix = np.nan
 
     return {
         "days": days,

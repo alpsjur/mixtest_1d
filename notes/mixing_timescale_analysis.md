@@ -243,7 +243,23 @@ The geometric-mean length scale reduces the `t*_mix` spread by a factor of **~6*
 
 This resolves the caveat from §4.5: the pycnocline length scale is now validated over a genuinely independent `z_t`/`H0` design, not just a fixed-`z_t` comparison, and the geometric-mean form specifically (not just "some function that shrinks with proximity to a boundary") is confirmed as the best of the candidates tested.
 
-### 4.7 Confirmed conservation and numerical health
+### 4.7 Mapping A(c4): a fine c4 sweep from 0.1 to GLS.C1
+
+§4.4 established that `t*_mix` depends on `structure.c4` and `grid.H0`/`initial.temp_zt` as separable factors, `t*_mix ≈ A(c4)·B(H0, z_t)`, but only tested `c4 ∈ {0.44, 0.97}`. A dedicated follow-up sweep (`templates/c4_fine_sweep.yaml`, using the existing `tools/prep_mixing_timescale_sweep.py` machinery) samples `c4` at 7 values (`0.10, 0.25, 0.40, 0.55, 0.70, 0.85, 1.00`) crossed with the original 2 values of `grid.H0` (`75, 150` m, `temp_zt = 40` m fixed as in the original sweep), with `CD = 0.63` and `temp_dT = 10.0` held fixed (14 runs total).
+
+**Resolution improvement:** at this fine `c4` spacing, the original "first output timestep where `φ* < 0.05`" metric proved too coarse — with hourly history output, several adjacent `c4` values landed on the exact same output timestep and appeared numerically identical. `mixing_timescale()` was updated to linearly interpolate `t*_mix` between the last sample `≥ 0.05` and the first sample `< 0.05`, giving sub-output-step resolution; this is now the default behavior for all length scales and sweeps (a backward-compatible refinement, not a `length_scale`-specific change).
+
+**Separability re-confirmed at fine resolution:** the ratio `t*_mix(H0=150)/t*_mix(H0=75)` is `0.827–0.838` across all 7 `c4` values (vs. `0.824–0.828` found at just 2 `c4` values in §4.4) — the `A(c4)·B(H0)` factorization holds cleanly over the whole finely-sampled range, not just the 2 original points.
+
+**Shape of A(c4):** for `c4` from `0.10` to `0.85`, `t*_mix` increases only gently and smoothly (~9% total increase at `H0=75`, from `0.528` to `0.576`), and is fit extremely well by a quadratic in `c4` (`A0 + a·c4 + b·c4²`, relative RMSE < 0.5% at both `H0` values, vs. ~1% for a linear or exponential fit) — a plain power-law singularity at `c4 = GLS.C1` (e.g. `A0/(1-c4)^p`) does **not** fit at all (residuals dominate once `c4` approaches 1). Then, from `c4 = 0.85` to `c4 = 1.00 (= GLS.C1)`, `t*_mix` rises sharply: **~34–36% above the quadratic trend extrapolated from `c4 < 1`**, consistently at both `H0` values. Since `c4 = 1.00` was checked and is *not* flagged `unstable` by the existing anomaly detector (§4.3), this is a real, validated data point, not a numerical artifact of the instability discussed in §4.3 (which only manifests for `c4 > GLS.C1`, e.g. `c4 = 1.4`) — but it does show that the approach to the theoretical "neutral point" `c4 = C1` is not smooth: mixing efficiency degrades disproportionately fast in the last ~15% of the valid `c4` range.
+
+![Fine c4 sweep: A(c4) mapping](../figures/mixing_timescale_c4_fine_sweep.png)
+
+*(Both panels: `t*_mix` vs. `c4` for `H0=75` (blue) and `H0=150` (orange), with a quadratic fit to the `c4 < 1.0` points (dashed) extrapolated to `c4=1.0`. The sharp upward departure of the solid curves from the dashed extrapolation right at `c4 = GLS.C1 = 1.0` is visible in both panels, for both length scale choices.)*
+
+**Interpretation:** this refines the qualitative picture from §4.3 — rather than a sharp binary switch between "stable, C1-scaled mixing efficiency" (`c4 ≤ C1`) and "numerical collapse" (`c4 > C1`), there appears to be a smooth, mild, closure-driven reduction in mixing efficiency for most of the valid `c4` range, followed by an accelerating approach to reduced efficiency as `c4 → C1`, consistent with `c4 = C1` being a genuine dynamical transition (per Carpenter et al.'s neutral-point framing) rather than merely a numerically convenient upper bound.
+
+### 4.8 Confirmed conservation and numerical health
 
 - Volume-averaged density is conserved to ~1e-7 relative error over the full run duration in every case (justifying the "no reference run needed" simplification in §2.1).
 - `φ*(t)` settles cleanly to ~0 (numerical noise floor ~1e-6) with no overshoot or oscillation in any of the 16 valid runs, confirming the diagnostic pipeline and the underlying mixing physics are well-behaved once `c4 ≤ GLS.C1`.
@@ -262,12 +278,14 @@ This resolves the caveat from §4.5: the pycnocline length scale is now validate
 
 5. **`c4 > C1` should be interpreted as a theoretically low-efficiency regime, not merely a numerical anomaly.** In Carpenter et al., `c4 = C1` is the distinguished value at which structure-induced production leaves the implied mixing efficiency unchanged; `c4 > C1` reduces that efficiency, while `c4 < C1` enhances it. In the present explicit STRUCTURE_MIXING/GLS implementation, pushing into the `c4 > C1` regime (`c4 = 1.4 > 1.0`) did not just make mixing weaker: it caused `tke`, `gls`, and `AKt` to collapse to floor values, so the regime is numerically unvalidated in practice. We therefore restrict the validated sweep range to `c4 ≤ GLS.C1`, enforced by a `ValueError` in `analytic_mixing_timescale()` and by anomaly flagging in `plot_collapse()`. This should be understood as a **practical restriction of the current implementation**, not as a universal theoretical prohibition on `c4 > C1`.
 
-6. **`CD` and `temp_dT` have negligible independent effect on the nondimensional mixing curves once time is scaled by the Carpenter power-balance timescale.** Their primary influence is already absorbed into `P_str`, `Δρ`, and therefore `t*` / `τ_mix`, exactly as the leading-order theory predicts.
+6. **`A(c4)` is smooth and mildly increasing for most of the valid range, but rises sharply as `c4 → GLS.C1`.** A fine 7-point `c4` sweep (§4.7, `c4 ∈ [0.10, 1.00]`) shows `t*_mix` is well-fit by a quadratic in `c4` for `c4 ≤ 0.85` (relative RMSE < 0.5%), with only a mild ~9% total increase over that range — but at `c4 = GLS.C1` exactly, `t*_mix` jumps ~35% above the extrapolated quadratic trend, consistently at both `H0` values tested. This point is not flagged as numerically unstable, so it is a real effect: mixing efficiency degrades disproportionately fast in the last ~15% of the valid `c4` range, consistent with `c4 = C1` being a genuine dynamical transition (Carpenter et al.'s "neutral point") rather than just a numerically convenient upper bound. The `A(c4)·B(H0)` separability found in §4.4 holds cleanly across this whole finely-sampled range (ratio `t*_mix(H0=150)/t*_mix(H0=75)` stays within `0.827–0.838` for all 7 `c4` values), not just the 2 originally tested points.
+
+7. **`CD` and `temp_dT` have negligible independent effect on the nondimensional mixing curves once time is scaled by the Carpenter power-balance timescale.** Their primary influence is already absorbed into `P_str`, `Δρ`, and therefore `t*` / `τ_mix`, exactly as the leading-order theory predicts.
 
 ## 6. Future work / open questions
 
-- **Sweep `c4` more finely between 0 and `GLS.C1`** to map out the `A(c4)` dependence more precisely (only 2 points were tested here and in §4.6).
-- **Consider whether `t*_mix ≈ A(c4)·B(H0,z_t)` extends to a wider parameter range** or breaks down (e.g. at very shallow/deep `H0`, very small/large `z_t/H0` ratios close to 0 or 1, or very small `c4`).
+- **Consider whether `t*_mix ≈ A(c4)·B(H0,z_t)` extends to a wider parameter range** or breaks down (e.g. at very shallow/deep `H0`, very small/large `z_t/H0` ratios close to 0 or 1, or very small `c4` approaching 0).
+- **Investigate the mechanism behind the sharp `A(c4)` upturn near `c4 = GLS.C1`** (§4.7) — e.g. does `AKt` or the TKE/GLS balance show early warning signs (elevated variance, slower convergence to quasi-steady state) as `c4` approaches `C1`, even before the numerically-unstable regime `c4 > C1` is reached?
 - **Test the geometric-mean pycnocline length scale on a sloping or non-uniform-`str_a` water column**, where the "distance to a boundary" concept is less clean than in this idealized flat-bottom, depth-uniform-drag setup.
 
 ## 7. Code and artifacts
@@ -278,13 +296,15 @@ This resolves the caveat from §4.5: the pycnocline length scale is now validate
 | `roms/Include/mixtest_1d.h` | `NONLIN_EOS` undefined (linear EOS), required for physically meaningful `φ(t)`. |
 | `templates/mixing_timescale_sweep.yaml` | Original sweep definition (CD x c4 x temp_dT x H0, `z_t` fixed at 40 m). |
 | `templates/pycnocline_zt_sweep.yaml` | Follow-up sweep definition (§4.6): explicit `(H0, z_t)` pairs x `c4`, varying `z_t` independently of `H0`. |
+| `templates/c4_fine_sweep.yaml` | Follow-up sweep definition (§4.7): 7 values of `c4` (0.10–1.00) x 2 values of `grid.H0`, mapping `A(c4)` finely (uses the existing `tools/prep_mixing_timescale_sweep.py`). |
 | `configs/variants/mixing_timescale.yaml` | Scaled `str_a`/`BFRC_U` variant to bring τ_mix into a practical 2–13 day range. |
-| `tools/prep_mixing_timescale_sweep.py` | Prepares the original sweep runs, deriving per-run `NTIMES` from `analytic_mixing_timescale()`. |
+| `tools/prep_mixing_timescale_sweep.py` | Prepares the original sweep runs (and the §4.7 fine-`c4` sweep, which is a pure cartesian product), deriving per-run `NTIMES` from `analytic_mixing_timescale()`. |
 | `tools/prep_pycnocline_zt_sweep.py` | Prepares the §4.6 follow-up sweep from explicit `(H0, z_t)` pairs (not a full cartesian product, to avoid placing the thermocline too close to a boundary). |
-| `analysis/mixing_timescale.py` | Per-run diagnostics (`mixing_timescale()`), sweep summary (`summarize_sweep()`), collapse plot (`plot_collapse()`), and closure-sensitivity plot (`plot_sensitivity()`); all three accept a `length_scale` argument (`"H0"` or `"pycnocline"`, see §4.5), and `pycnocline_length_scale()` implements the alternative length scale itself. |
+| `analysis/mixing_timescale.py` | Per-run diagnostics (`mixing_timescale()`), sweep summary (`summarize_sweep()`), collapse plot (`plot_collapse()`), and closure-sensitivity plot (`plot_sensitivity()`); all three accept a `length_scale` argument (`"H0"` or `"pycnocline"`, see §4.5), and `pycnocline_length_scale()` implements the alternative length scale itself. `mixing_timescale()`'s `t_star_mix` now uses linear interpolation between output timesteps for sub-output-step resolution (added for §4.7's fine `c4` sweep, but applies to all sweeps). |
 | `sweeps/mixing_timescale/manifest.yaml` / `.csv` | Generated manifest of the original 16 prepared/completed runs (not committed to git; regenerable via `tools/prep_mixing_timescale_sweep.py`). |
 | `sweeps/pycnocline_zt/manifest.yaml` / `.csv` | Generated manifest of the §4.6 follow-up 16 runs (not committed to git; regenerable via `tools/prep_pycnocline_zt_sweep.py`). |
-| `runs/mixtau_*/`, `runs/mixtauzt_*/` | Completed run directories for both sweeps (not committed to git). |
+| `sweeps/c4_fine/manifest.yaml` / `.csv` | Generated manifest of the §4.7 fine-`c4` 14 runs (not committed to git; regenerable via `tools/prep_mixing_timescale_sweep.py templates/c4_fine_sweep.yaml`). |
+| `runs/mixtau_*/`, `runs/mixtauzt_*/`, `runs/mixtauc4_*/` | Completed run directories for all three sweeps (not committed to git). |
 | `figures/mixing_timescale_collapse_mixing_timescale_H0.png` | The φ*(t*) collapse plot using `L=H0` (§4.2), original sweep. |
 | `figures/mixing_timescale_sensitivity_mixing_timescale_H0.png` | The t*_mix vs. c4/H0 sensitivity plot using `L=H0` (§4.4), original sweep. |
 | `figures/mixing_timescale_collapse_mixing_timescale_pycnocline.png` | The φ*(t*) collapse plot using `L=sqrt(zt(H0-zt))` (§4.5), original sweep. |
@@ -292,6 +312,8 @@ This resolves the caveat from §4.5: the pycnocline length scale is now validate
 | `figures/mixing_timescale_length_scale_comparison.png` | Side-by-side `φ*(t*)` comparison of both length scale choices, colored by `c4` with linestyle by `H0`, for the original sweep (§4.5). |
 | `figures/mixing_timescale_collapse_pycnocline_zt_H0.png` | The φ*(t*) collapse plot using `L=H0` for the §4.6 follow-up sweep (8 visible `H0`/`z_t` sub-clusters). |
 | `figures/mixing_timescale_collapse_pycnocline_zt_pycnocline.png` | The φ*(t*) collapse plot using `L=sqrt(z_t(H0-z_t))` for the §4.6 follow-up sweep (sub-clusters collapse to 2 curves by `c4` only). |
+| `figures/mixing_timescale_sensitivity_c4_fine_H0.png` / `_pycnocline.png` | The standard t*_mix vs. c4 sensitivity plot (via `plot_sensitivity()`) for the §4.7 fine-`c4` sweep, at 7 `c4` values instead of 2. |
+| `figures/mixing_timescale_c4_fine_sweep.png` | Annotated version of the above with quadratic fits (excluding `c4=1.0`) overlaid, highlighting the sharp departure from the smooth trend right at `c4=GLS.C1` (§4.7). |
 
 To regenerate this analysis from scratch:
 
@@ -305,4 +327,10 @@ python tools/prep_pycnocline_zt_sweep.py templates/pycnocline_zt_sweep.yaml
 python tools/run_sweep.py sweeps/pycnocline_zt/manifest.yaml
 python analysis/mixing_timescale.py --sweep sweeps/pycnocline_zt/manifest.yaml --length-scale H0 --save
 python analysis/mixing_timescale.py --sweep sweeps/pycnocline_zt/manifest.yaml --length-scale pycnocline --save
+
+python tools/prep_mixing_timescale_sweep.py templates/c4_fine_sweep.yaml
+python tools/run_sweep.py sweeps/c4_fine/manifest.yaml
+python analysis/mixing_timescale.py --sweep sweeps/c4_fine/manifest.yaml --length-scale H0 --save
+python analysis/mixing_timescale.py --sweep sweeps/c4_fine/manifest.yaml --length-scale pycnocline --save
 ```
+

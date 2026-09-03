@@ -1,0 +1,33 @@
+sweep:
+  id: c4 fine sweep (mapping A(c4) between 0 and GLS.C1)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Follow-up to notes/mixing_timescale_analysis.md section 4.4/6, which
+  # established that t*_mix depends on structure.c4 (closure efficiency)
+  # and grid.H0/initial.temp_zt (pycnocline position) as separable factors,
+  # t*_mix ~= A(c4) * B(H0, zt), but only tested 2 values of c4 (0.44 and
+  # 0.97). This sweep finely samples c4 across its full valid range
+  # (0, GLS.C1] = (0, 1.0] to map out A(c4) precisely, while keeping the
+  # original 2 values of grid.H0 (with initial.temp_zt fixed at 40, as in
+  # the original 16-run sweep) to additionally re-confirm that the
+  # separability A(c4)*B(H0) still holds now that c4 is sampled much more
+  # densely, not just checked at 2 points.
+  #
+  # c4=1.0 (== GLS.C1 exactly) is included as the theoretical "neutral
+  # point" from Carpenter et al. -- structure-induced production should
+  # leave the implied mixing efficiency unchanged there. c4 values above
+  # 1.0 remain excluded (see analytic_mixing_timescale()'s ValueError and
+  # notes section 4.3): they numerically collapse TKE/GLS to their floor
+  # in this explicit STRUCTURE_MIXING/GLS implementation.
+  parameters:
+    structure.c4: [0.1, 0.25, 0.4, 0.55, 0.7, 0.85, 1.0]
+    grid.H0: [75.0, 150.0]
+    structure.CD: [0.63]
+    initial.temp_dT: [10.0]
+
+  run_name_template: "mixtauc4_c4{structure.c4}_H{grid.H0}"
+
+  output_dir: "sweeps/c4_fine"
+
+  ntimes_margin: 3.0
