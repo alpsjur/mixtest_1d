@@ -151,15 +151,13 @@ However, unlike Carpenter et al.'s idealized time-dependent pycnocline model (wh
 
 An initial version of the sweep included `structure.c4 = 1.4` in addition to `0.44` and `0.97`. All 8 runs with `c4 = 1.4` showed essentially **no mixing**: `φ*` remained near 1 throughout the run, even though the mean flow still spun up to the analytically expected drag-limited speed. Diagnostics showed that `tke` and `AKt` collapsed to their floor values (`tke ≈ Kmin`, `AKt ≈ 1e-6 m² s⁻¹`), while the momentum/drag balance remained correct. Thus the failure occurred in the turbulence closure, not in the drag formulation.
 
-This behavior can be interpreted in light of the original Carpenter et al. structure-mixing theory. In the homogeneous `k-ε` analysis given in their Eqs. (17)–(18), the additional coefficient `c4` enters the dissipation-equation source term analogously to the standard shear-production coefficient `c1`. Their analysis shows that the distinguished value is **`c4 = c1`**:
+This behavior can be interpreted in light of the original Rennau et al. structure-mixing theory. In the homogeneous `k-ε` analysis given in their Eqs. (17)–(18), the additional coefficient `c4` enters the dissipation-equation source term analogously to the standard shear-production coefficient `c1`. Their analysis shows that the distinguished value is **`c4 = c1`**:
 
 - `c4 = c1`: structure production leaves the implied mixing efficiency unchanged;
 - `c4 < c1`: structure production **enhances** the mixing efficiency;
 - `c4 > c1`: structure production **reduces** the mixing efficiency.
 
 Thus `c4` should be interpreted relative to `c1`, not as an independent free scaling. In the present GLS configuration, `GLS.C1 = 1.0`, so `c4 = 1.4` lies on the low-efficiency side of that theoretical threshold, whereas the successful sweep values (`0.44`, `0.97`) lie at or below it.
-
-Our results for the valid runs are consistent with this theory: increasing `c4` from `0.44` to `0.97` leaves the diagnosed power input unchanged but systematically slows the erosion of stratification, indicating a lower effective mixing efficiency. However, when pushed further to `c4 = 1.4 > C1`, the model does not merely become less efficient; instead, the explicit GLS update appears to become numerically unstable/stiff, with the structure-production term in the ψ-equation driving `tke` and `AKt` to their minimum values. We therefore interpret the `c4 = 1.4` results as an **implementation-level numerical collapse occurring within a theoretically low-efficiency regime**, not as a physically meaningful “zero-mixing” prediction of the closure itself.
 
 Accordingly, `c4 = 1.4` was removed from the production sweep, and `analytic_mixing_timescale()` now rejects `structure.c4 > GLS.C1` as outside the validated operating range of the present explicit STRUCTURE_MIXING/GLS coupling. This should be understood as a **practical restriction of the current implementation**, not as a universal theoretical prohibition on `c4 > c1` in all turbulence closures.
 
@@ -176,7 +174,7 @@ To quantify the deviation from Carpenter's universal `t* = 1`, we define an **em
 
 Two effects, cleanly separable:
 
-1. **Closure coefficient `c4`:** `t*_mix` is consistently ~1.34–1.36x *larger* (i.e. mixing takes longer, relative to the dimensionless time scale) at `c4 = 0.97` than at `c4 = 0.44`. This is initially counter-intuitive — one might expect a larger structure-production coefficient to produce *faster* mixing. But `c4` multiplies the production term in the **ψ (dissipation/length-scale) equation**, not the TKE equation directly. A larger `c4` increases the dissipation rate of turbulent kinetic energy relative to its production, which *shrinks* the turbulent length scale and hence `AKt` for the same power input `P_d`. This was confirmed directly: mean `AKt` over the water column (last half of the run) was ~0.37 m²/s at `c4 = 0.44` vs. ~0.19 m²/s at `c4 = 0.97`, for otherwise identical `CD`/`dT`/`H0` — i.e. roughly half the eddy diffusivity at the higher `c4`, consistent with the ~1.35x longer mixing time.
+1. **Closure coefficient `c4`:** `t*_mix` is consistently ~1.34–1.36x *larger* (i.e. mixing takes longer, relative to the dimensionless time scale) at `c4 = 0.97` than at `c4 = 0.44`. Note that `c4` multiplies the production term in the **ψ (dissipation/length-scale) equation**, not the TKE equation directly. A larger `c4` increases the dissipation rate of turbulent kinetic energy relative to its production, which *shrinks* the turbulent length scale and hence `AKt` for the same power input `P_d`. This was confirmed directly: mean `AKt` over the water column (last half of the run) was ~0.37 m²/s at `c4 = 0.44` vs. ~0.19 m²/s at `c4 = 0.97`, for otherwise identical `CD`/`dT`/`H0` — i.e. roughly half the eddy diffusivity at the higher `c4`, consistent with the ~1.35x longer mixing time.
 
 2. **Water column depth `H0` (pycnocline position):** `t*_mix` is consistently ~0.82–0.83x *smaller* (mixing completes sooner, relative to t*) at `H0 = 150` m than at `H0 = 75` m. The thermocline centre depth (`initial.temp_zt = 40` m, fixed across the sweep) sits at a different *relative* position in the water column depending on `H0`: 53% of the way down for `H0 = 75` m, but only 27% of the way down for `H0 = 150` m. A pycnocline positioned closer to a boundary (surface or bed) erodes faster under a roughly depth-uniform eddy diffusivity than one centered mid-column, because it has less distance to homogenize toward the nearer boundary and benefits from boundary-adjacent turbulence. Since the pycnocline depth `temp_zt` was not itself swept, this session could not initially distinguish "absolute pycnocline depth" from "relative pycnocline position" as the controlling variable — resolved in §4.5 below by testing an alternative length scale.
 
@@ -212,6 +210,8 @@ Using the pycnocline-based length scale reduces the residual `H0`-driven spread 
 This is a genuinely useful refinement of the Carpenter et al. (2016) framework for cases like this one, where offshore structures span the full water column but the pycnocline itself sits at a roughly fixed absolute depth (set by seasonal thermal forcing) regardless of local bathymetric depth — exactly the situation on much of the Norwegian shelf. `analysis/mixing_timescale.py` now supports both length-scale choices via a `length_scale=` argument / `--length-scale` CLI flag, defaulting to `"H0"` for backward compatibility with Carpenter et al.'s original definition.
 
 **Caveat (resolved in §4.6 below):** this was originally tested over only 2 values of `H0` (75 m and 150 m) at one fixed `z_t = 40` m, so the exact functional form (geometric mean, specifically) was not yet rigorously established, and "absolute pycnocline depth" was confounded with "relative pycnocline position" — a proper test required varying `z_t` independently of `H0` across a wider range.
+
+**Another caveat:** it is not clear how this translates to structures not extending trough the whole water column, relevant for floating foundaitons. 
 
 ### 4.6 Confirming the geometric-mean form: varying z_t independently of H0
 
@@ -257,7 +257,7 @@ This resolves the caveat from §4.5: the pycnocline length scale is now validate
 
 *(Both panels: `t*_mix` vs. `c4` for `H0=75` (blue) and `H0=150` (orange), with a quadratic fit to the `c4 < 1.0` points (dashed) extrapolated to `c4=1.0`. The sharp upward departure of the solid curves from the dashed extrapolation right at `c4 = GLS.C1 = 1.0` is visible in both panels, for both length scale choices.)*
 
-**Interpretation:** this refines the qualitative picture from §4.3 — rather than a sharp binary switch between "stable, C1-scaled mixing efficiency" (`c4 ≤ C1`) and "numerical collapse" (`c4 > C1`), there appears to be a smooth, mild, closure-driven reduction in mixing efficiency for most of the valid `c4` range, followed by an accelerating approach to reduced efficiency as `c4 → C1`, consistent with `c4 = C1` being a genuine dynamical transition (per Carpenter et al.'s neutral-point framing) rather than merely a numerically convenient upper bound.
+**Interpretation:** this refines the qualitative picture from §4.3 — rather than a sharp binary switch between "stable, C1-scaled mixing efficiency" (`c4 ≤ C1`) and "numerical collapse" (`c4 > C1`), there appears to be a smooth, mild, closure-driven reduction in mixing efficiency for most of the valid `c4` range, followed by an accelerating approach to reduced efficiency as `c4 → C1`, consistent with `c4 = C1` being a genuine dynamical transition (per Rennau et al.'s neutral-point framing) rather than merely a numerically convenient upper bound.
 
 ### 4.8 Confirmed conservation and numerical health
 
