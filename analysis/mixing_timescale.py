@@ -23,51 +23,6 @@ Across a sweep, plotting phi_star vs t_star for every run and checking
 whether the curves collapse (and cross ~0 near t_star=1) is the direct
 analogue of Carpenter et al.'s Fig 4b.
 
-Key findings from the 16-run CD x c4 x temp_dT x H0 sweep
-(sweeps/mixing_timescale/, see also plot_sensitivity()):
-
-  - tau_mix_diagnostic matches tau_mix_theory to within <1% for every run:
-    the analytic power-balance prediction (from the assumed steady
-    drag/body-force balance) correctly captures the *power input* scale,
-    independent of the GLS closure coefficient c4 -- as expected, since
-    u_inf/Pd only depend on CD/str_a/BFRC_U, not on the turbulence closure.
-
-  - The *dimensionless* mixing-completion time t_star_mix (first t_star at
-    which phi_star < 0.05) is NOT universal at ~1 as in Carpenter et al.'s
-    idealized model. It ranges ~0.45-0.73 across this sweep and depends
-    strongly on:
-      * structure.c4 (closure efficiency): t_star_mix is ~1.34x larger at
-        c4=0.97 than at c4=0.44 (consistently, for both H0). This is
-        counter-intuitive if c4 is thought of as "more structure-driven
-        turbulence production" -- but c4 multiplies the *psi*-equation
-        (length-scale/dissipation) production term, not the tke production
-        term directly, so a larger c4 actually *shrinks* the eddy length
-        scale / AKt for the same power input (confirmed via AKt magnitudes:
-        ~0.37 m2/s mean at c4=0.44 vs ~0.19 m2/s at c4=0.97 for the same
-        CD/dT/H0), giving slower, not faster, mixing.
-      * grid.H0 (pycnocline position): t_star_mix is ~0.83x smaller at
-        H0=150 than H0=75, because the thermocline centre (initial.temp_zt,
-        fixed at 40 m) sits at a different *relative* depth in the water
-        column for different H0 (53% down for H0=75 vs 27% down for
-        H0=150) -- a pycnocline closer to a boundary erodes faster under a
-        given (roughly depth-uniform) eddy diffusivity.
-    and negligibly on structure.CD or initial.temp_dT (both already fully
-    absorbed into the t_star/tau_mix normalization itself, as intended).
-
-  - The c4 and H0 effects on t_star_mix are cleanly multiplicative/
-    separable: t_star_mix(c4, H0) ~= A(c4) * B(H0) to within ~0.5% (e.g.
-    the H0=150/H0=75 ratio is ~0.828 for c4=0.44 and ~0.824 for c4=0.97;
-    the c4=0.97/c4=0.44 ratio is ~1.342 for H0=75 and ~1.336 for H0=150).
-
-  - structure.c4 must be <= GLS.C1 (see analytic_mixing_timescale in
-    utils/utils.py): c4 > C1 was tested (c4=1.4, with GLS.C1=1.0) and
-    reproducibly destabilizes the explicit stepping of the structure-
-    production term in the psi equation in *every* CD/dT/H0 combination,
-    collapsing TKE/GLS to their numerical floor and preventing any mixing.
-    This is flagged automatically (mixing_timescale()'s `unstable` field)
-    and excluded from plot_collapse(), but is a real limitation of the
-    current explicit STRUCTURE_MIXING/GLS coupling worth keeping in mind
-    for any future sweep design.
 
 Usage (single run):
     python analysis/mixing_timescale.py runs/<name>/resolved_config.yaml
@@ -101,20 +56,6 @@ def pycnocline_length_scale(params: dict) -> float:
     Geometric mean of the pycnocline centre's distances to the two
     boundaries (surface and bed): L = sqrt(zt * (H0 - zt)).
 
-    Empirically found to be a substantially better length scale than the
-    full water column depth H0 for nondimensionalizing the mixing time.
-    First found in a 16-run sweep varying grid.H0 (with initial.temp_zt
-    fixed at 40 m): using L here instead of H0 in t_star reduces the
-    coefficient of variation of the empirical mixing-completion time
-    t_star_mix (within fixed structure.c4 groups) by a factor of ~3 (from
-    CV~0.10 to CV~0.03). Subsequently confirmed over a wider, independent
-    sweep of grid.H0 and initial.temp_zt (sweeps/pycnocline_zt/): CV is
-    reduced by a factor of ~6 (from CV~0.16 to CV~0.03), and the geometric
-    mean specifically outperforms min(zt,H0-zt), max(zt,H0-zt), and the
-    harmonic mean (all of which are worse than plain H0 once zt varies
-    independently of H0). See notes/mixing_timescale_analysis.md, sections
-    "Testing an alternative length scale" and "Confirming the geometric-mean
-    form".
     """
     H0 = float(params["grid"]["H0"])
     zt = float(params["initial"]["temp_zt"])
@@ -122,7 +63,6 @@ def pycnocline_length_scale(params: dict) -> float:
 
 
 def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
-                      unmixed_threshold: float = 0.5, tstar_check: float = 1.5,
                       length_scale: str = "H0") -> dict:
     """
     Compute phi(t), Pstr(t), and the theoretical/diagnostic mixing time
@@ -136,17 +76,6 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
         Fraction of the run (from the end) over which Pstr(t) is averaged
         to get the quasi-steady Pstr_diag, excluding the initial spin-up
         transient. Default 0.5 (last half of the run).
-    unmixed_threshold, tstar_check : float
-        Anomaly flag: if phi_star is still above `unmixed_threshold` at the
-        last time for which t_star >= tstar_check (i.e. the run has run for
-        at least tstar_check "theoretical mixing times" but stratification
-        has barely eroded), the run is flagged as `unstable=True`. This
-        catches the known GLS/TKE structure-production instability (seen
-        e.g. at large CD*c4 with strong stratification and deep water
-        columns), where the explicit stepping of the psi-equation's
-        structure source term collapses TKE/GLS to their numerical floor,
-        killing mixing entirely -- not a physical result, and would
-        otherwise silently distort the phi_star(t_star) collapse plot.
     length_scale : str
         Which length scale to use for nondimensionalizing time and tau_mix:
         "H0" (Carpenter et al.'s original choice, the full water column
@@ -159,7 +88,7 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     -------
     dict with keys:
         days, phi, phi_star, Pstr, Pstr_diag,
-        tau_mix_theory, tau_mix_diagnostic, t_star, params, unstable
+        tau_mix_theory, tau_mix_diagnostic, t_star, params
     """
     ds, grid, params = open_roms_dataset(resolved_config_path)
 
@@ -191,12 +120,6 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
 
     t_seconds = days * 86400.0
     t_star = t_seconds * Pstr_diag / (G * delta_rho * L ** 2)
-
-    # Anomaly / instability flag (see docstring).
-    unstable = False
-    past_check = np.where(t_star >= tstar_check)[0]
-    if len(past_check) > 0 and phi_star[past_check[-1]] > unmixed_threshold:
-        unstable = True
 
     # Empirical "mixing complete" dimensionless time: first t_star at which
     # phi_star drops below 5% of its initial value. Unlike tau_mix_theory
@@ -232,7 +155,6 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
         "days": days,
         "phi": phi_vals,
         "phi_star": phi_star,
-        "unstable": unstable,
         "Pstr": Pstr.values,
         "Pstr_diag": Pstr_diag,
         "tau_mix_theory": tau_mix_theory,
@@ -270,7 +192,6 @@ def summarize_sweep(manifest_path: str, plateau_frac: float = 0.5, length_scale:
             "tau_mix_theory_days": result["tau_mix_theory"] / 86400.0,
             "tau_mix_diagnostic_days": result["tau_mix_diagnostic"] / 86400.0,
             "Pstr_diag": result["Pstr_diag"],
-            "unstable": result["unstable"],
             "t_star_mix": result["t_star_mix"],
         })
     return rows
@@ -303,8 +224,6 @@ def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5, len
             result = mixing_timescale(resolved_config, plateau_frac=plateau_frac, length_scale=length_scale)
         except Exception as e:
             print(f"Skipping {r.get('run_name')}: {e}")
-            continue
-        if result["unstable"]:
             continue
         p = r.get("params", {})
         key = (p.get("structure.c4"), p.get("grid.H0"))
@@ -360,7 +279,6 @@ def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5, length
         _, ax = plt.subplots(figsize=(7, 5))
 
     n_plotted = 0
-    excluded = []
     for r in runs:
         resolved_config = r["resolved_config"]
         if not os.path.isfile(resolved_config):
@@ -370,25 +288,12 @@ def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5, length
         except Exception as e:
             print(f"Skipping {r.get('run_name')}: {e}")
             continue
-        if result["unstable"]:
-            excluded.append(r.get("run_name"))
-            continue
         ax.plot(
             result["t_star"], result["phi_star"],
             label=r.get("run_name"),
             color=cmap(n_plotted / max(len(runs) - 1, 1)),
         )
         n_plotted += 1
-
-    if excluded:
-        print(
-            "WARNING: excluded from collapse plot (flagged as numerically "
-            "unstable -- phi has not decayed despite t* well past 1, "
-            "consistent with TKE/GLS collapsing to their floor value "
-            "rather than a real physical failure to mix):"
-        )
-        for name in excluded:
-            print(f"  - {name}")
 
     ax.axvline(1.0, color="k", linestyle="--", linewidth=1, label=r"$t^*=1$")
     ax.axhline(0.0, color="k", linestyle=":", linewidth=1)
