@@ -288,27 +288,27 @@ def prep_ds(ds, params):
     return ds, grid
 
 
-def compute_phi(ds, grid, params):
+def compute_phi(ds, grid, params, integration_depth: float = None):
     """
     Time evolution of the stratification potential energy anomaly phi(t),
     following Carpenter et al. (2016), Eq. 7:
 
         phi(t) = integral_0^H  g * z * (rho_mix - rho(z,t))  dz
 
-    with z measured *upward from the seabed* (z=0 at the bed, z=H at the
-    surface) -- the opposite convention to ROMS' z_rho (0 at the surface,
-    negative downward). rho_mix is the density the water column would have
-    if instantaneously and completely mixed; since this idealised setup has
-    no surface/bottom buoyancy fluxes and no tracer sources or nudging
-    (LtracerSrc/LtracerCLM == F in the .in template), the volume-averaged
-    density is conserved and rho_mix is just the (constant-in-time)
-    volume average of the initial density field.
+    with z measured *upward from the base of the mixed layer* (z=0 at the
+    layer base, z=H at the surface) -- the opposite convention to ROMS'
+    z_rho (0 at the surface, negative downward). rho_mix is the density the
+    layer would have if instantaneously and completely mixed; in this
+    closed setup with no surface/bottom buoyancy fluxes and no tracer
+    sources or nudging, rho_mix is the volume average of the initial density
+    field within the integration layer.
 
-    phi > 0 for stable stratification and phi -> 0 as the water column
-    is mixed. Throughout this function "rho" refers to whatever density
-    field is stored in the history file (ROMS' idDano "density anomaly");
-    since phi only involves differences, the constant offset used by that
-    convention is irrelevant.
+    When floating foundations are used (depth_zero_below < H0), mixing is
+    confined to the upper layer of depth Hturb = min(H0, depth_zero_below).
+    By default (or when integration_depth is specified), phi(t) is computed
+    over this turbine layer [0, Hturb], so that phi -> 0 as the turbine
+    layer homogenizes. For bottom-fixed foundations (depth_zero_below >= H0),
+    Hturb = H0 and this smoothly reduces to the full water column.
 
     Parameters
     ----------
@@ -317,7 +317,10 @@ def compute_phi(ds, grid, params):
     grid : xgcm.Grid
         Grid with metrics attached (see prep_ds).
     params : dict
-        Resolved run config (used for grid.H0).
+        Resolved run config (used for grid.H0 and structure.depth_zero_below).
+    integration_depth : float, optional
+        Depth below the surface over which to integrate phi(t). If None,
+        defaults to Hturb = min(H0, structure.depth_zero_below).
 
     Returns
     -------
@@ -325,7 +328,7 @@ def compute_phi(ds, grid, params):
         Time series of phi(t), dims (ocean_time,), units J m-2 (per unit
         horizontal area).
     rho_mix0 : xarray.DataArray
-        Scalar volume-averaged initial density (the "rho_mix" datum).
+        Scalar volume-averaged initial density across the integrated layer.
     """
     if "rho" not in ds:
         raise KeyError(
@@ -334,20 +337,28 @@ def compute_phi(ds, grid, params):
         )
 
     H0 = float(params["grid"]["H0"])
+    depth_zero_below = float(params.get("structure", {}).get("depth_zero_below", H0))
+    if integration_depth is None:
+        integration_depth = min(H0, depth_zero_below)
+    else:
+        integration_depth = min(H0, float(integration_depth))
 
-    # rho_mix: volume-averaged density at t=0 (conserved for all t in this
-    # closed-column setup -- see docstring). Kept as a DataArray so it
-    # broadcasts cleanly against the full field below.
-    rho_mix0 = grid.average(ds["rho"].isel(ocean_time=0), axis=("X", "Y", "Z"))
+    # Identify vertical layers within the integration depth
+    # dist_from_surface = -z_rho is positive downward from surface (0 at surface)
+    layer_mask = (-ds["z_rho"] <= integration_depth)
 
-    # z measured upward from the seabed (Carpenter et al. convention).
-    z_from_bed = ds["z_rho"] + H0
+    # Layer thickness weighted initial density
+    rho0_layer = ds["rho"].isel(ocean_time=0).where(layer_mask)
+    layer_dV = ds["dV"].where(layer_mask)
+    rho_mix0 = (rho0_layer * layer_dV).sum(dim=("s_rho", "eta_rho", "xi_rho")) / layer_dV.sum(dim=("s_rho", "eta_rho", "xi_rho"))
 
-    integrand = G * (rho_mix0 - ds["rho"]) * z_from_bed
+    # z measured upward from the bottom of the integration layer (-integration_depth)
+    z_from_layer_base = ds["z_rho"] + integration_depth
 
-    # Integrate vertically first (matches metric dims exactly), then average
-    # horizontally -- equivalent to averaging first since the domain is
-    # horizontally homogeneous, but avoids metric/dim mismatches.
+    integrand = G * (rho_mix0 - ds["rho"]) * z_from_layer_base
+    integrand = integrand.where(layer_mask, 0.0)
+
+    # Integrate vertically first, then average horizontally
     phi_xy = grid.integrate(integrand, "Z")
     phi = grid.average(phi_xy, axis=("X", "Y")).squeeze()
     phi.name = "phi"
@@ -364,11 +375,9 @@ def compute_Pd(ds, grid, params):
 
         P_d = 0.5 * CD * str_a * (u^2 + v^2)^(3/2)     [m2 s-3]
 
-    str_a and CD are taken from the resolved config (params["structure"]),
-    i.e. this assumes str_a is spatially uniform over the water column, as
-    is the case for the baseline/sensitivity-sweep configs (depth_zero_below
-    set far below H0). If a depth-varying str_a is used, this needs to be
-    read from the grid file instead.
+    str_a and CD are taken from the resolved config (params["structure"]).
+    If depth_zero_below < H0 (floating turbine foundations), str_a is zeroed
+    out for depths below depth_zero_below from the surface.
 
     Returns
     -------
@@ -377,12 +386,19 @@ def compute_Pd(ds, grid, params):
     """
     CD = float(params["structure"]["CD"])
     str_a = float(params["structure"]["str_a"])
+    depth_zero_below = float(params.get("structure", {}).get("depth_zero_below", 1.0e9))
 
     u_r = grid.interp(ds["u"], "X")
     v_r = grid.interp(ds["v"], "Y")
     spd2 = u_r ** 2 + v_r ** 2
 
     Pd = 0.5 * CD * str_a * spd2 * np.sqrt(spd2)
+
+    # Mask str_a to zero below turbine depth if depth_zero_below is active
+    if depth_zero_below < float(params["grid"]["H0"]):
+        dist_from_surface = -ds["z_rho"]
+        Pd = Pd.where(dist_from_surface <= depth_zero_below, 0.0)
+
     Pd.name = "Pd"
     Pd.attrs["long_name"] = "structure-drag turbulence production"
     Pd.attrs["units"] = "m2 s-3"
@@ -397,8 +413,10 @@ def compute_Pstr(ds, grid, params):
         P_str(t) = rho0 * integral_0^H  P_d(z,t)  dz     [W m-2]
 
     This is the diagnostic (model-derived) counterpart to the analytic
-    P_str used in analytic_mixing_timescale, and is meant to be evaluated
-    from actual u,v time series (accounts for spin-up transients etc.).
+    P_str used in analytic_mixing_timescale, and is evaluated from actual
+    u,v time series. When floating foundations are used, P_d is masked to
+    zero below depth_zero_below, so the vertical integration correctly
+    integrates only over the turbine foundation depth Hturb.
 
     Returns
     -------
@@ -430,12 +448,18 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
         u_inf = sqrt(2 * BFRC_U / (CD * str_a))
 
     This requires BFRC_V == 0 (else the 2D force/drag balance is not a
-    simple closed-form expression) and str_a active over the full depth
-    (structure.depth_zero_below >= grid.H0), since P_str = rho0 * H * P_d
-    assumes P_d is depth-uniform.
+    simple closed-form expression).
 
-    tau_mix = g * delta_rho * H^2 / P_str
-            = g * delta_rho * H / (rho0 * P_d)
+    When floating turbine foundations are used (depth_zero_below < H0),
+    structure drag is active over the depth Hturb = min(H0, depth_zero_below).
+    The depth-integrated power extraction scales with Hturb:
+
+        P_str = rho0 * Hturb * P_d
+
+    and the theoretical bulk mixing time scale is:
+
+        tau_mix = g * delta_rho * Hturb^2 / P_str
+                = g * delta_rho * Hturb / (rho0 * P_d)
 
     Use this to size NTIMES for a run *before* it has been executed (e.g. in
     a sensitivity sweep where each parameter combination implies a different
@@ -458,14 +482,17 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
         Pstr          depth-integrated power extraction [W/m2]
         delta_rho     top-to-bottom density difference [kg/m3]
         tau_mix       predicted mixing time scale [s]
+        Hturb         turbine foundation depth [m]
     """
     CD = float(cfg["structure"]["CD"])
     str_a = float(cfg["structure"]["str_a"])
     depth_zero_below = float(cfg["structure"]["depth_zero_below"])
     H0 = float(cfg["grid"]["H0"])
+    Hturb = min(H0, depth_zero_below)
     BFRC_U = float(cfg["bodyforce"]["BFRC_U"]) * 1e-7  # config stores e-7 m/s2
     BFRC_V = float(cfg["bodyforce"].get("BFRC_V", 0.0)) * 1e-7
     temp_dT = float(cfg["initial"]["temp_dT"])
+    temp_zt = cfg.get("initial", {}).get("temp_zt")
 
     if abs(BFRC_V) > 0.0:
         raise ValueError(
@@ -473,13 +500,15 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
             "drag balance). For BFRC_V != 0, estimate tau_mix from a model "
             "run instead (compute_Pstr + compute_phi)."
         )
-    if depth_zero_below < H0:
-        raise ValueError(
-            "analytic_mixing_timescale assumes str_a is uniform over the "
-            "full water column (structure.depth_zero_below >= grid.H0)."
-        )
     if str_a <= 0.0 or CD <= 0.0:
         raise ValueError("analytic_mixing_timescale requires str_a > 0 and CD > 0.")
+    if Hturb <= 0.0:
+        raise ValueError(f"analytic_mixing_timescale requires Hturb > 0, got {Hturb}.")
+    if temp_zt is not None and float(temp_zt) >= Hturb:
+        raise ValueError(
+            f"initial.temp_zt ({temp_zt} m) >= turbine foundation depth Hturb ({Hturb} m). "
+            "The thermocline center must be within the turbine foundation layer."
+        )
 
     c4 = cfg.get("structure", {}).get("c4")
     c1 = cfg.get("GLS", {}).get("C1")
@@ -494,13 +523,13 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
 
     u_inf = np.sqrt(2.0 * BFRC_U / (CD * str_a))
     Pd = 0.5 * CD * str_a * u_inf ** 3
-    Pstr = RHO0 * H0 * Pd
+    Pstr = RHO0 * Hturb * Pd
     delta_rho = R0 * TCOEF * temp_dT
 
     if delta_rho <= 0.0:
         raise ValueError("analytic_mixing_timescale requires initial.temp_dT > 0.")
 
-    tau_mix = G * delta_rho * H0 ** 2 / Pstr
+    tau_mix = G * delta_rho * Hturb ** 2 / Pstr
 
     return {
         "u_inf": u_inf,
@@ -508,6 +537,7 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
         "Pstr": Pstr,
         "delta_rho": delta_rho,
         "tau_mix": tau_mix,
+        "Hturb": Hturb,
     }
 
 

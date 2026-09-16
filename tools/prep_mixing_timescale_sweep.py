@@ -79,6 +79,7 @@ def main():
     base_config_path = sdef["base_config"]
     apply_config_path = sdef.get("apply_config")
     parameters = sdef["parameters"]
+    fixed = sdef.get("fixed", {})
     run_name_template = sdef["run_name_template"]
     sweep_out_dir = sdef["output_dir"]
     ntimes_margin = float(sdef.get("ntimes_margin", 2.5))
@@ -103,7 +104,8 @@ def main():
 
     manifest_rows = []
     index = 1
-    for combo in cartesian_dict(parameters):
+    for param_combo in cartesian_dict(parameters):
+        combo = {**fixed, **param_combo}
         over = {}
         for k, v in combo.items():
             parts = k.split(".")

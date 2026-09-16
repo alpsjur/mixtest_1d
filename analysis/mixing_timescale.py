@@ -54,16 +54,27 @@ from utils.utils import (
 def pycnocline_length_scale(params: dict) -> float:
     """
     Geometric mean of the pycnocline centre's distances to the two
-    boundaries (surface and bed): L = sqrt(zt * (H0 - zt)).
+    boundaries of the mixing zone (surface at z=0 and turbine foundation
+    base at z=-Hturb, where Hturb = min(H0, depth_zero_below)):
+    L = sqrt(zt * (Hturb - zt)).
 
+    For bottom-fixed foundations (depth_zero_below >= H0), Hturb = H0
+    and this reproduces Carpenter et al.'s full-column geometric mean
+    sqrt(zt * (H0 - zt)).
     """
     H0 = float(params["grid"]["H0"])
+    depth_zero_below = float(params.get("structure", {}).get("depth_zero_below", H0))
+    Hturb = min(H0, depth_zero_below)
     zt = float(params["initial"]["temp_zt"])
-    return np.sqrt(zt * (H0 - zt))
+    if zt >= Hturb:
+        raise ValueError(
+            f"Pycnocline depth zt={zt} m must be shallower than turbine foundation depth Hturb={Hturb} m."
+        )
+    return np.sqrt(zt * (Hturb - zt))
 
 
 def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
-                      length_scale: str = "H0") -> dict:
+                      length_scale: str = "Hturb") -> dict:
     """
     Compute phi(t), Pstr(t), and the theoretical/diagnostic mixing time
     scales for a single completed run.
@@ -78,11 +89,10 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
         transient. Default 0.5 (last half of the run).
     length_scale : str
         Which length scale to use for nondimensionalizing time and tau_mix:
-        "H0" (Carpenter et al.'s original choice, the full water column
-        depth) or "pycnocline" (see pycnocline_length_scale() -- the
-        geometric mean of the pycnocline's distances to the two
-        boundaries, found empirically to collapse the sweep much better
-        when grid.H0 is varied at fixed initial.temp_zt).
+        "Hturb" (turbine foundation draft min(H0, depth_zero_below)),
+        "H0" (full water column depth, Carpenter et al.'s original choice),
+        or "pycnocline" (geometric mean of pycnocline distances to surface
+        and turbine base: sqrt(zt * (Hturb - zt))).
 
     Returns
     -------
@@ -108,13 +118,17 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     tau_mix_theory = theory["tau_mix"]
     delta_rho = theory["delta_rho"]
     H0 = float(params["grid"]["H0"])
+    depth_zero_below = float(params.get("structure", {}).get("depth_zero_below", H0))
+    Hturb = min(H0, depth_zero_below)
 
-    if length_scale == "H0":
+    if length_scale == "Hturb":
+        L = Hturb
+    elif length_scale == "H0":
         L = H0
     elif length_scale == "pycnocline":
         L = pycnocline_length_scale(params)
     else:
-        raise ValueError(f"Unknown length_scale {length_scale!r}: use 'H0' or 'pycnocline'.")
+        raise ValueError(f"Unknown length_scale {length_scale!r}: use 'Hturb', 'H0', or 'pycnocline'.")
 
     tau_mix_diagnostic = G * delta_rho * L ** 2 / Pstr_diag if Pstr_diag > 0 else np.nan
 
@@ -165,15 +179,13 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     }
 
 
-def summarize_sweep(manifest_path: str, plateau_frac: float = 0.5, length_scale: str = "H0") -> list:
+def summarize_sweep(manifest_path: str, plateau_frac: float = 0.5, length_scale: str = "Hturb") -> list:
     """
     Compute mixing_timescale() for every completed run in a sweep manifest.
 
     Returns a list of dicts (one per run) with the swept parameters plus
     tau_mix_theory/tau_mix_diagnostic/Pstr_diag, for tabulating how the
-    actual (diagnostic) mixing time scale depends on each parameter -- in
-    particular whether it depends on structure.c4 even though
-    tau_mix_theory does not.
+    actual (diagnostic) mixing time scale depends on each parameter.
     """
     manifest = load_yaml(manifest_path)
     rows = []
@@ -197,26 +209,29 @@ def summarize_sweep(manifest_path: str, plateau_frac: float = 0.5, length_scale:
     return rows
 
 
-def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5, length_scale: str = "H0"):
+def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5, length_scale: str = "Hturb"):
     """
     Plot the empirical dimensionless mixing-completion time t_star_mix
     (first t_star at which phi_star < 0.05) against structure.c4, grouped
-    by grid.H0, averaging over structure.CD/initial.temp_dT (which were
-    found to have negligible effect once time is nondimensionalized by
-    Pstr_diag). This isolates the closure-efficiency sensitivity that the
-    simple Carpenter et al. power-based tau_mix scaling does not capture.
-
-    With length_scale="pycnocline" the residual grouping by grid.H0 mostly
-    disappears (see pycnocline_length_scale() and
-    notes/mixing_timescale_analysis.md) -- kept as an argument here so this
-    plot can be used to visually confirm that collapse.
+    by grid.H0 (or structure.depth_zero_below if swept), averaging over
+    structure.CD/initial.temp_dT.
     """
     import matplotlib.pyplot as plt
     from collections import defaultdict
 
     manifest = load_yaml(manifest_path)
-    by_c4_H0 = defaultdict(list)
-    for r in manifest.get("runs", []):
+    runs = manifest.get("runs", [])
+    depth_vals = {
+        r.get("params", {}).get("structure.depth_zero_below")
+        for r in runs
+        if "structure.depth_zero_below" in r.get("params", {})
+    }
+    sweep_by_depth = len(depth_vals) > 1
+    group_param = "structure.depth_zero_below" if sweep_by_depth else "grid.H0"
+    label_prefix = "Hturb" if sweep_by_depth else "H0"
+
+    by_c4_group = defaultdict(list)
+    for r in runs:
         resolved_config = r["resolved_config"]
         if not os.path.isfile(resolved_config):
             continue
@@ -226,22 +241,22 @@ def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5, len
             print(f"Skipping {r.get('run_name')}: {e}")
             continue
         p = r.get("params", {})
-        key = (p.get("structure.c4"), p.get("grid.H0"))
-        by_c4_H0[key].append(result["t_star_mix"])
+        key = (p.get("structure.c4"), p.get(group_param))
+        by_c4_group[key].append(result["t_star_mix"])
 
     if ax is None:
         _, ax = plt.subplots(figsize=(6, 5))
 
-    H0_vals = sorted({k[1] for k in by_c4_H0})
+    group_vals = sorted({k[1] for k in by_c4_group if k[1] is not None})
     cmap = plt.get_cmap("viridis")
-    for i, H0 in enumerate(H0_vals):
-        c4_vals = sorted(k[0] for k in by_c4_H0 if k[1] == H0)
-        means = [np.mean(by_c4_H0[(c4, H0)]) for c4 in c4_vals]
-        stds = [np.std(by_c4_H0[(c4, H0)]) for c4 in c4_vals]
+    for i, gval in enumerate(group_vals):
+        c4_vals = sorted(k[0] for k in by_c4_group if k[1] == gval and k[0] is not None)
+        means = [np.mean(by_c4_group[(c4, gval)]) for c4 in c4_vals]
+        stds = [np.std(by_c4_group[(c4, gval)]) for c4 in c4_vals]
         ax.errorbar(
             c4_vals, means, yerr=stds, marker="o",
-            label=f"H0={H0} m",
-            color=cmap(i / max(len(H0_vals) - 1, 1)),
+            label=f"{label_prefix}={gval} m",
+            color=cmap(i / max(len(group_vals) - 1, 1)),
         )
 
     ax.set_xlabel(r"structure.c4")
@@ -252,18 +267,12 @@ def plot_sensitivity(manifest_path: str, ax=None, plateau_frac: float = 0.5, len
     return ax
 
 
-def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5, length_scale: str = "H0"):
+def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5, length_scale: str = "Hturb"):
     """
     Plot phi_star(t_star) for every completed run in a sweep manifest onto
     one axis, to check for the Carpenter-et-al.-style collapse. Adds a
     vertical reference line at t_star=1 (the theoretical "fully mixed"
     point) and a horizontal line at phi_star=0.
-
-    length_scale="H0" reproduces Carpenter et al.'s original choice (the
-    full water column depth). length_scale="pycnocline" uses
-    pycnocline_length_scale() instead -- found empirically to give a much
-    tighter collapse when grid.H0 varies at fixed initial.temp_zt (see
-    notes/mixing_timescale_analysis.md).
     """
     import matplotlib.pyplot as plt
     try:
@@ -299,8 +308,10 @@ def plot_collapse(manifest_path: str, ax=None, plateau_frac: float = 0.5, length
     ax.axhline(0.0, color="k", linestyle=":", linewidth=1)
     if length_scale == "H0":
         ax.set_xlabel(r"$t^* = t\,P_{str}/(g\,\Delta\rho\,H_0^2)$")
+    elif length_scale == "Hturb":
+        ax.set_xlabel(r"$t^* = t\,P_{str}/(g\,\Delta\rho\,H_{turb}^2)$")
     else:
-        ax.set_xlabel(r"$t^* = t\,P_{str}/(g\,\Delta\rho\,L^2)$, $L=\sqrt{z_t(H_0-z_t)}$")
+        ax.set_xlabel(r"$t^* = t\,P_{str}/(g\,\Delta\rho\,L^2)$, $L=\sqrt{z_t(H_{turb}-z_t)}$")
     ax.set_ylabel(r"$\phi(t)/\phi(0)$")
     ax.set_title(f"Mixing timescale collapse (L={length_scale})")
     ax.grid(True, alpha=0.3)
@@ -314,10 +325,10 @@ def main():
     parser.add_argument("resolved_config", nargs="?", help="Path to a single run's resolved_config.yaml")
     parser.add_argument("--sweep", type=str, help="Path to a sweep manifest.yaml (collapse plot)")
     parser.add_argument("--plateau-frac", type=float, default=0.5)
-    parser.add_argument("--length-scale", choices=["H0", "pycnocline"], default="H0",
-                         help="Length scale for nondimensionalizing t_star/tau_mix (default: H0, "
-                              "Carpenter et al.'s original choice; 'pycnocline' uses "
-                              "sqrt(zt*(H0-zt)), which collapses better when H0 is varied)")
+    parser.add_argument("--length-scale", choices=["Hturb", "H0", "pycnocline"], default="Hturb",
+                         help="Length scale for nondimensionalizing t_star/tau_mix (default: Hturb, "
+                              "turbine foundation draft min(H0, depth_zero_below); 'H0' uses "
+                              "total water depth; 'pycnocline' uses sqrt(zt*(Hturb-zt)))")
     parser.add_argument("--save", action="store_true")
     args = parser.parse_args()
 

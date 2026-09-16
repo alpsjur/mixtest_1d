@@ -1,0 +1,35 @@
+sweep:
+  id: floating_turbine_sweep (sensitivity to foundation draft depth Hturb)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Floating turbine foundation sensitivity sweep.
+  #
+  # Sweeps:
+  #   - structure.depth_zero_below: [40.0, 70.0, 150.0]
+  #     (two floating foundation drafts 40m, 70m, and bottom-fixed 150m)
+  #   - structure.CD: [0.63, 1.26]
+  #   - initial.temp_dT: [5.0, 10.0]
+  #   - structure.c4: [0.44, 0.97]
+  #
+  # Total: 3 (Hturb) x 2 (CD) x 2 (dT) x 2 (c4) = 24 runs.
+  #
+  # Thermocline center is positioned at temp_zt = 25.0 m, which satisfies
+  # the condition zt < Hturb for all cases (25 m < 40 m).
+  parameters:
+    structure.depth_zero_below: [40.0, 70.0, 150.0]
+    structure.CD: [0.63, 1.26]
+    initial.temp_dT: [5.0, 10.0]
+    structure.c4: [0.44, 0.97]
+
+  fixed:
+    grid.H0: 150.0
+    initial.temp_zt: 25.0
+
+  run_name_template: "mixtaufl_Hturb{structure.depth_zero_below}_CD{structure.CD}_c4{structure.c4}_dT{initial.temp_dT}"
+
+  output_dir: "sweeps/floating_turbine"
+
+  # Sized from analytic_mixing_timescale(), which scales P_str and tau_mix
+  # with Hturb = min(H0, depth_zero_below).
+  ntimes_margin: 2.5
