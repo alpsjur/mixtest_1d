@@ -1,0 +1,48 @@
+sweep:
+  id: c4 near-C1 sweep (resolving the sharp A(c4) upturn approaching GLS.C1)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Follow-up to notes/mixing_timescale_analysis.md section 4.7, which found
+  # that A(c4) is well fit by a quadratic for c4 <= 0.85, but rises sharply
+  # (~34-36% above the quadratic trend) between c4=0.85 and c4=1.0 (= GLS.C1).
+  # Only 2 points (0.85, 1.00) bracket that upturn in the existing
+  # c4_fine_sweep.yaml -- not enough to resolve its shape. This sweep densely
+  # samples c4 in [0.875, 1.0] to map the upturn, crossed with 2 values of
+  # grid.H0 (75, 150 m, as in the original/fine sweeps) x 2 values of
+  # initial.temp_zt (40, 20 m) to also test whether the A(c4)*B(H0,zt)
+  # separability found in sections 4.4/4.6/4.7 still holds in this
+  # near-C1 regime, using explicit (H0, temp_zt) pairs (as in
+  # pycnocline_zt_sweep.yaml) rather than a full H0 x temp_zt cartesian
+  # product, since not all combinations keep the thermocline clear of the
+  # domain boundaries.
+  #
+  # NOTE: temp_zt=20 with H0=75 sits right at the edge of the "~20 <
+  # temp_zt < H0-20" boundary-clearance guideline (initial.temp_ht=10).
+  # This case is included to extend the z_t/H0 ratio range, but its
+  # diagnostics should be checked for boundary contamination before being
+  # trusted in the final fit.
+  pairs:
+    - {H0: 75.0, temp_zt: 40.0}
+    - {H0: 75.0, temp_zt: 20.0}
+    - {H0: 150.0, temp_zt: 40.0}
+    - {H0: 150.0, temp_zt: 20.0}
+
+  parameters:
+    structure.c4: [0.875, 0.9, 0.925, 0.95, 0.975, 0.99, 1.0]
+
+  # CD and temp_dT held fixed, as in the original c4_fine_sweep.yaml (found
+  # to have negligible independent effect on the dimensionless mixing time).
+  fixed:
+    structure.CD: 0.63
+    initial.temp_dT: 10.0
+
+  run_name_template: "mixtauc4c1_c4{structure.c4}_H{grid.H0}_zt{initial.temp_zt}"
+
+  output_dir: "sweeps/c4_near_c1"
+
+  # Larger margin than the original c4_fine sweep (3.0): as c4 -> GLS.C1,
+  # mixing efficiency drops and t*_mix rises sharply (the very effect this
+  # sweep targets), so extra headroom avoids truncating the slowest,
+  # closest-to-C1 runs before they finish mixing.
+  ntimes_margin: 4.0
