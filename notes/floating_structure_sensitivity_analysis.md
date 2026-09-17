@@ -236,60 +236,169 @@ structured zones, e.g. `depth_frac ≲ 0.1` — the main sweep's `depth_frac
 = 0.1` runs did not reach 10% mixing even after `tau_x_theory × 3`, and
 were not extended into a long-run check; this remains open, see §6.)
 
+### 4.3 Refinement: pycnocline penetration, not `depth_frac`, controls the crossover
+
+§4.1 showed the theory/diagnostic ratio crosses from over- to
+under-prediction somewhere around `depth_frac ≈ 0.25–0.4`, but the exact
+crossover point differed between the `H0=75` and `H0=150` groups — a
+hint that `depth_frac` itself isn't the fundamental control variable.
+The physical reasoning in §2.1 already suggested why: what matters is
+whether the structured zone actually reaches into the pycnocline, not
+what fraction of the *total* water column it occupies.
+
+**Definition.** The pycnocline's upper edge is approximated as
+`z_edge = z_t - temp_ht` (30 m for this sweep's fixed thermocline
+parameters `z_t=40, temp_ht=10` — a reasonable but not exact estimate of
+where the tanh transition "begins"; see `pycnocline_edge()` in
+`analysis/floating_depth.py`). Define the **penetration margin**
+`penetration_margin = d_struct - z_edge`: positive means the structured
+zone reaches into (or through) the pycnocline ("penetrating"), negative
+means it stops short ("non-penetrating").
+
+**New straddle sweep.** To test this cleanly, 12 new runs were added
+(`templates/floating_depth_penetration_H{75,150}.yaml`), targeting
+`d_struct ∈ {20, 25, 30, 35, 40, 45}` m for each of `H0=75` and
+`H0=150` (i.e. the same absolute `d_struct` values, different
+`depth_frac`), fixed `c4=0.44`.
+
+![Theory/diagnostic tau_x ratio vs. penetration margin, colored by H0](../figures/floating_depth_penetration_margin.png)
+
+*Figure 3: theory/diagnostic `τ_x` ratio vs. `penetration_margin`,
+combining the main sweep's `c4=0.44` runs with the new straddle sweeps,
+for `H0=75` and `H0=150`. Unlike the `depth_frac`-based plot in §4.1,
+the two `H0` groups now line up closely, both crossing `ratio=1` almost
+exactly at `penetration_margin=0` (`ratio≈1.0–1.2` just past the edge,
+`ratio≈0.7–1.0` just before it).*
+
+This is a substantially cleaner result than the `depth_frac`-based
+crossover in §4.1: **whether the structured zone reaches the pycnocline
+is the real controlling parameter**, not `depth_zero_below/H0`. This
+confirms the diffusion-limited-vs-power-limited picture from §2.1 and
+gives a concrete, geometry-based criterion (`d_struct` vs. `z_t -
+temp_ht`) for which regime a given configuration is in — useful both for
+interpreting these results and for designing future sweeps/practical
+turbine-siting judgements.
+
+### 4.4 Collapse exploration for penetrating structures (phase A)
+
+With the penetrating/non-penetrating split established, the next
+question is whether `φ(t)` collapses onto a common curve (as in the base
+note's Carpenter-et-al.-style analysis) once restricted to **penetrating**
+floating structures. Non-penetrating structures are deferred to a later
+round (see §6) since a delay/transport mechanism is expected to matter
+there, requiring separate treatment.
+
+**Candidates tried** (all reduce to the base note's original
+normalization for bottom-fixed structures, since `d_struct = H0` and
+`pycnocline_length_scale` are unaffected by `depth_zero_below`):
+- `L = H0` (base note's original choice).
+- `L = pycnocline length scale = sqrt(z_t(H0-z_t))` (found in the base
+  note to collapse the *bottom-fixed* sweep much better than `H0`
+  when `H0` is varied at fixed `z_t`).
+- `L = d_struct` (the structured-zone thickness itself, since `Pstr`
+  scales with `d_struct`, not `H0`).
+
+**Quantitative collapse metric.** All `φ*(t*)` curves (for the
+penetrating subset: main sweep + both straddle sweeps + long-run subset,
+restricted to `penetration_margin ≥ 0`) were interpolated onto a common
+`t*` grid over `[0, 1]`, and the standard deviation of `φ*` across curves
+at each grid point was averaged over the grid (lower = tighter collapse;
+see `collapse_spread_score()` in `analysis/floating_depth.py`).
+
+| length_scale | collapse_spread_score |
+|---|---|
+| `H0` | 0.150 |
+| `pycnocline` | **0.047** |
+| `d_struct` | 0.193 |
+
+![Penetrating-only collapse, L=H0](../figures/floating_depth_penetrating_collapse_H0.png)
+![Penetrating-only collapse, L=pycnocline](../figures/floating_depth_penetrating_collapse_pycnocline.png)
+
+*Figure 4: `φ*(t*)` for the penetrating subset only, using `L=H0` (top)
+vs. `L=pycnocline` (bottom). The pycnocline-scaled curves visibly
+cluster more tightly, consistent with the ~3x lower spread score.*
+
+**Result: the `pycnocline` length scale collapses penetrating floating
+structures substantially better than `H0` or `d_struct`**, mirroring the
+base note's finding for bottom-fixed structures. This means the
+already-generalized `d_struct`-based `Pstr` theory, combined with the
+existing `pycnocline` nondimensionalization (no new theory needed),
+already gives a reasonable universal-ish collapse for penetrating
+floating structures. `d_struct` alone performs worse than even the
+unmodified `H0` choice — the water column's overall geometry
+(`H0`, `z_t`) still matters for the mixing *rate*, not just the
+structured-zone thickness, for runs where the zone does reach the
+pycnocline.
+
+This was a bounded, 3-candidate exploration per plan (phase A); the
+non-penetrating case (`penetration_margin < 0`) was excluded here and is
+deferred to a later round (§6).
+
 ## 5. Predictive function
 
 Per the plan's empirical-first approach: **no clean closed-form
-correction to `τ_x_theory` was found.** The theory-to-diagnostic ratio is
-not a constant multiplicative factor across `depth_frac` (§4.1) — it
-decreases monotonically from ~2.5 (thick structured zone) through 1
-(crossover near `depth_frac ≈ 0.3–0.4`) to well below 1 or "not reached"
-(thin structured zone). A single fitted correction factor (analogous to
-`A(c4)` in the base note) would not generalize across this range without
-additional structure (e.g. a `depth_frac`-dependent term reflecting the
-diffusion-limited regime), which this first pass did not attempt to
-derive.
+correction to `τ_x_theory` was found for the full `depth_frac` range**,
+but §4.3/4.4 substantially refine what such a correction would need to
+look like. The theory-to-diagnostic ratio is not a constant
+multiplicative factor across `depth_frac` (§4.1) — but §4.3 shows it *is*
+governed cleanly by `penetration_margin = d_struct - (z_t - temp_ht)`
+rather than `depth_frac` per se, crossing `ratio=1` right at
+`penetration_margin=0` for both `H0` groups tested. A single fitted
+correction factor (analogous to `A(c4)` in the base note) would need to
+be expressed as a function of `penetration_margin` (or, more physically,
+some diffusion-delay quantity built from it, per §6), not `depth_frac`.
 
 **What *is* established, and useful as a practical estimate:**
-`τ_x_theory ≈ x_frac · τ_mix_theory` (with `P_str ∝ d_struct`) gives the
-correct order of magnitude and correct qualitative sensitivity to
-`depth_frac`, `c4`, and `H0` for `depth_frac ≳ 0.25`, typically within a
-factor of ~2–3. For `depth_frac ≲ 0.25` it should be treated as a lower
-bound only (actual mixing is slower than predicted), and for very thin
-structured zones (`depth_frac ~ 0.1`) it may not predict a reachable
-crossing time at all within a practically-sized run.
-
-A proper predictive function for the diffusion-limited regime would
-likely need to incorporate the GLS closure's vertical diffusivity/
-turbulent length scale explicitly (rather than a single depth-integrated
-power balance), which is left as future work (§6).
+1. `τ_x_theory ≈ x_frac · τ_mix_theory` (with `P_str ∝ d_struct`) gives
+   the correct order of magnitude and correct qualitative sensitivity to
+   `depth_frac`, `c4`, and `H0`, and is quantitatively reasonable
+   (within a factor of ~2–2.5, itself consistent with the base note's
+   own early-time-approximation bias) **specifically for penetrating
+   structures** (`d_struct ≥ z_t - temp_ht`) — confirmed both via the
+   `τ_x` ratio (§4.3) and via the `φ*(t*)` collapse (§4.4).
+2. For penetrating structures, `φ*(t*)` (using the `pycnocline` length
+   scale, not `H0`) collapses substantially better than with `H0`, so
+   the existing base-note machinery (`length_scale="pycnocline"`)
+   already extends adequately to floating structures **as long as they
+   penetrate the pycnocline** — no new theory was needed for this
+   subset (§4.4).
+3. For non-penetrating structures (`penetration_margin < 0`), the theory
+   under-predicts `τ_x` increasingly as the margin becomes more
+   negative, and this regime was excluded from the phase-A collapse
+   check. A proper predictive function here would likely need to
+   incorporate a diffusion-delay term (turbulent transport of TKE across
+   the gap between the structured zone and the pycnocline) explicitly,
+   which is left as future work (§6, phase B).
 
 ## 6. Future work
 
-- **`bfrc_cb ≠ structure.CD` (shear between zones).** This analysis
-  fixed `bfrc_cb == CD` to isolate the effect of structured-zone
-  thickness. Allowing `bfrc_cb` to differ (as originally motivated in
-  the problem statement — a distinct steady-state velocity/shear
-  profile) is the natural next extension, and will require revisiting
-  `analytic_mixing_timescale`'s momentum-balance assumptions (currently
-  it explicitly rejects `bfrc_cb != CD` for floating configs).
-- **Diffusion-limited regime for thin structured zones
-  (`depth_frac ≲ 0.25`).** The simple power-balance theory breaks down
-  here (§4.1); a refined theory would need to account for the vertical
-  transport time scale of TKE/mixing from the structured zone down into
-  the floating zone (e.g. via the GLS closure's diffusivity), not just
-  the total power budget.
+- **Non-penetrating structures / diffusion-delay theory (phase B).**
+  §4.3/4.4 establish that `penetration_margin` cleanly separates a
+  "penetrating" regime (existing `pycnocline`-scaled theory works well)
+  from a "non-penetrating" regime (theory increasingly under-predicts
+  `τ_x`). The natural next step is to derive and test a diffusion-delay
+  correction for the non-penetrating case: TKE produced in the shallow
+  structured zone must be transported across the gap
+  `L_gap = (z_t - temp_ht) - d_struct` before it can act on the
+  pycnocline's stratification, suggesting an additive time delay
+  `tau_delay ~ L_gap^2 / K_eff` (rather than a different power-law rate)
+  before the existing `t*` normalization applies. `K_eff` could be
+  estimated directly from the model's own diagnosed GLS-closure
+  vertical-diffusivity output (`AKt`/`AKv`, confirmed present in the
+  ROMS history files) rather than fitted as a free parameter. Not
+  attempted this round; deliberately deferred until the penetrating-case
+  baseline (established here) was solid.
 - **Very thin structured zones (`depth_frac ~ 0.1` and below).** Not
   checked with a long-run subset; open question whether a genuine
   mixing floor exists at some (thinner) `depth_frac`, or whether given
   enough time these configurations also eventually reach full mixing
   (as `depth_frac = 0.25` did, contrary to the earlier informal check).
-- **Pycnocline length-scale collapse.** The base note found that
-  nondimensionalizing time by a pycnocline length scale
-  (`sqrt(z_t(H0−z_t))`) rather than `H0` collapses the bottom-fixed
-  sweep much better across varying `H0`. Whether an analogous (or
-  different) length scale improves the collapse for floating structures
-  — potentially one that also incorporates `depth_zero_below` — was not
-  investigated here.
+- **`pycnocline_edge()` approximation.** `z_t - temp_ht` (`k=1.0`) is a
+  reasonable but somewhat arbitrary estimate of where the tanh
+  thermocline transition "begins" (could also use `k=2.0`, i.e.
+  `z_t - 2·temp_ht`, for a stricter definition). The straddle sweep's
+  clean crossover at `penetration_margin=0` (§4.3) suggests `k=1.0` is
+  at least a reasonable choice, but this was not itself swept/optimized.
 
 ## 7. Code and artifacts
 
@@ -297,15 +406,22 @@ power balance), which is left as future work (§6).
 - `utils/utils.py`: `load_str_a`, `find_tau_x_star`, `detect_phi_plateau`;
   generalized `compute_Pd`, `analytic_mixing_timescale`.
 - `analysis/mixing_timescale.py`: `mixing_timescale()` extended with
-  `x_frac`/`tail_frac` diagnostics (additive, backward-compatible).
+  `x_frac`/`tail_frac` diagnostics (additive, backward-compatible);
+  `d_struct` now returned; `length_scale` gained a `"d_struct"` option.
 - `analysis/floating_depth.py` (new): `summarize_floating_sweep`,
-  `plot_tau_x_vs_depth_frac`, `summarize_plateau`, `plot_phi_longrun`.
+  `plot_tau_x_vs_depth_frac`, `summarize_plateau`, `plot_phi_longrun`,
+  `pycnocline_edge`, `plot_tau_x_ratio_vs_penetration`,
+  `gather_penetrating_curves`, `collapse_spread_score`,
+  `plot_penetrating_collapse`.
 - `tools/prep_floating_depth_sweep.py` (new): prep script with
   `structure.depth_frac → structure.depth_zero_below` conversion and
   dual `NTIMES`-sizing bases (`tau_x`/`tau_mix`).
 - `templates/floating_depth_sweep.yaml` (new): main sweep (20 runs).
 - `templates/floating_depth_longrun_sweep.yaml` (new): long-run/plateau
   subset (3 runs).
+- `templates/floating_depth_penetration_H75.yaml`,
+  `templates/floating_depth_penetration_H150.yaml` (new): pycnocline-edge
+  straddle sweeps (6 runs each, `c4=0.44` fixed).
 
 ### 7.2 Reproducing the sweeps
 ```bash
@@ -317,8 +433,23 @@ python tools/run_sweep.py sweeps/floating_depth/manifest.yaml
 python tools/prep_floating_depth_sweep.py templates/floating_depth_longrun_sweep.yaml
 python tools/run_sweep.py sweeps/floating_depth_longrun/manifest.yaml
 
+# Pycnocline-penetration straddle sweeps
+python tools/prep_floating_depth_sweep.py templates/floating_depth_penetration_H75.yaml
+python tools/prep_floating_depth_sweep.py templates/floating_depth_penetration_H150.yaml
+python tools/run_sweep.py sweeps/floating_depth_penetration_H75/manifest.yaml
+python tools/run_sweep.py sweeps/floating_depth_penetration_H150/manifest.yaml
+
 # Analysis (table + figure + plateau summary)
 python analysis/floating_depth.py \
     --sweep sweeps/floating_depth/manifest.yaml \
     --longrun sweeps/floating_depth_longrun/manifest.yaml --save
+
+# Penetration-margin diagnostic + phase-A collapse exploration
+python analysis/floating_depth.py \
+    --penetration sweeps/floating_depth/manifest.yaml \
+                  sweeps/floating_depth_penetration_H75/manifest.yaml \
+                  sweeps/floating_depth_penetration_H150/manifest.yaml \
+                  sweeps/floating_depth_longrun/manifest.yaml \
+    --collapse --save
 ```
+

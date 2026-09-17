@@ -124,14 +124,17 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     tau_mix_theory = theory["tau_mix"]
     tau_x_theory = theory["tau_x"]
     delta_rho = theory["delta_rho"]
+    d_struct = theory["d_struct"]
     H0 = float(params["grid"]["H0"])
 
     if length_scale == "H0":
         L = H0
+    elif length_scale == "d_struct":
+        L = d_struct
     elif length_scale == "pycnocline":
         L = pycnocline_length_scale(params)
     else:
-        raise ValueError(f"Unknown length_scale {length_scale!r}: use 'H0' or 'pycnocline'.")
+        raise ValueError(f"Unknown length_scale {length_scale!r}: use 'H0', 'pycnocline', or 'd_struct'.")
 
     tau_mix_diagnostic = G * delta_rho * L ** 2 / Pstr_diag if Pstr_diag > 0 else np.nan
 
@@ -185,6 +188,7 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
         "Pstr_diag": Pstr_diag,
         "tau_mix_theory": tau_mix_theory,
         "tau_mix_diagnostic": tau_mix_diagnostic,
+        "d_struct": d_struct,
         "t_star": t_star,
         "t_star_mix": t_star_mix,
         "x_frac": x_frac,

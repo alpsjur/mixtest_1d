@@ -1,0 +1,31 @@
+sweep:
+  id: floating-structure pycnocline-penetration straddle sweep (H0=150)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Straddles the pycnocline's upper edge (z_t - temp_ht = 40 - 10 = 30 m)
+  # with the same 6 d_struct targets as floating_depth_penetration_H75.yaml
+  # (20,25,30,35,40,45 m), but expressed as different depth_frac values
+  # since H0 differs. See
+  # notes/floating_structure_sensitivity_analysis.md sec 4.3 and
+  # analysis/floating_depth.py::pycnocline_edge/penetration_margin.
+  pairs:
+    - {H0: 150.0, temp_zt: 40.0}
+
+  parameters:
+    structure.c4: [0.44]
+    # depth_frac = d_struct / H0 for d_struct in {20,25,30,35,40,45} m
+    structure.depth_frac: [0.133333, 0.166667, 0.200000, 0.233333, 0.266667, 0.300000]
+
+  fixed:
+    structure.CD: 0.63
+    structure.cb: 0.63   # == CD: no shear between structured/floating zones
+    initial.temp_dT: 10.0
+
+  run_name_template: "floatdepth_penetration_H{grid.H0}_zt{initial.temp_zt}_df{structure.depth_frac}"
+
+  output_dir: "sweeps/floating_depth_penetration_H150"
+
+  ntimes_basis: "tau_x"
+  x_frac: 0.10
+  ntimes_margin: 3.0
