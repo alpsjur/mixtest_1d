@@ -389,16 +389,109 @@ Every one of the 74 runs — including the 42 `c4_fine`/`c4_near_c1` runs used t
 - `z_t=20, H0=75` (the tightest boundary-clearance case, §7.2) showed no signs of boundary contamination in the diagnostics (its `t*_mix` and `φ*(t*)` values were indistinguishable from the other 3 `(H0,z_t)` combinations at each `c4`), so it was kept in the final fit.
 - The functional forms (§7.2/7.3) were chosen for smoothness/boundedness, not derived from first-principles turbulence closure theory; they should be understood as accurate empirical fits over the sampled parameter range (`c4 ∈ [0.1,1.0]`, `H0 ∈ [75,150]` m, `z_t ∈ [20,115]` m, `CD ∈ [0.63,1.26]`, `temp_dT ∈ [5,10]`°C), not a proven asymptotic law.
 
-## 8. Code and artifacts
+## 8. Extension: floating support structures (`Gb` / `bfrc_cb`)
 
-### 8.1 Environment / ROMS build
+### 8.1 Motivation
+
+Sections 1–7 assume `str_a` (structure area density) is uniform over the
+full water column — appropriate for bottom-fixed turbine foundations. For
+**floating** turbine foundations, the structure (mooring lines, tower)
+only occupies the upper part of the water column: `str_a` is zero below a
+configurable depth (`structure.depth_zero_below`, already supported by
+`tools/make_grd.py::build_str_a`, no grid-side changes required).
+
+This breaks the existing steady-state mechanism: `UV_BODYFORCE` applies a
+spatially-uniform body force `BFRC_U`/`BFRC_V`, balanced at steady state by
+the `STRUCTURE_MIXING` drag `Gd = -0.5*str_cd*str_a*u*|V|`. Where
+`str_a = 0`, nothing balances the body force and `u` grows without bound.
+
+### 8.2 The `Gb` balancing term
+
+ROMS (`bodyforce` branch) now adds a second drag term, active only where
+the local `str_a` is zero, using a *reference* `str_a` carried down from
+the nearest level above with nonzero `str_a` (typically the base of the
+structured zone), and an independent drag coefficient `bfrc_cb`:
+
+```
+Gb_u = -0.5 * bfrc_cb * str_a_ref * u * |V|
+Gb_v = -0.5 * bfrc_cb * str_a_ref * v * |V|
+```
+
+- `str_a_ref` (`GRID(ng)%str_a_ref_omn`, computed once per column in
+  `ROMS/Utility/metrics.F`) is the nearest-nonzero-above value of
+  `str_a_omn`, not hard-coded to the top level — this generalizes to any
+  `str_a(z)` profile, not just a single structured/floating split.
+- `bfrc_cb` (`BFRC_CB` in the `.in` file, `ROMS/Modules/mod_scalars.F` /
+  `ROMS/Utility/read_phypar.F`) is **independent** of `str_cd`, so the
+  floating zone can reach a different steady-state velocity than the
+  structured zone above it (a free shear parameter). Setting
+  `bfrc_cb == str_cd` makes `Gb` numerically identical to `Gd` and
+  recovers the original single-layer, no-shear behavior exactly.
+- `Gb` is applied unconditionally where `str_a_omn = 0` and
+  `str_a_ref_omn > 0`; it is **not** ramped by `bfrc_ramp` (only the
+  driving body force ramps).
+- Everything is gated by the existing `UV_BODYFORCE && STRUCTURE_MIXING`
+  CPP macros — no new CPP flag was introduced.
+- Implementation: `ROMS/Utility/metrics.F` (`str_a_ref_omn` computation),
+  `ROMS/Modules/mod_grid.F` (field declaration), `ROMS/Modules/mod_scalars.F`
+  + `ROMS/Utility/read_phypar.F` (`bfrc_cb` parameter), `ROMS/Nonlinear/rhs3d.F`
+  (the `Gb` term itself, added next to the existing `Gd` block in `K_LOOP`).
+
+### 8.3 Validation
+
+Two new automated tests (`tests/run_tests.py`) validate the implementation
+using `configs/variants/test_UV_BODYFORCE_FLOATING*.yaml` (a two-zone grid:
+upper ~10 m structured, lower ~140 m floating, out of `H0=150` m):
+
+- **`test_UV_BODYFORCE_FLOATING_CB_EQ_CD`** (control, `bfrc_cb == CD`, no
+  shear): the *entire* column matches the single-layer analytical solution
+  `u(t) = sqrt(F/alpha)*tanh(t*sqrt(F*alpha))` to `rtol=1e-4` at every
+  level, confirming `Gb` reduces exactly to `Gd` when the coefficients and
+  reference `str_a` agree — a clean, decoupled-from-mixing check of the
+  `str_a_ref_omn`/`Gb` bookkeeping itself.
+- **`test_UV_BODYFORCE_FLOATING`** (`bfrc_cb = 0.3 < CD = 0.63`, i.e. a
+  weaker floating-zone drag, producing shear between the two zones): the
+  deep interior of the floating zone (levels far from the structured/
+  floating interface) matches its own independent single-layer analytical
+  solution to `rtol=3e-2`; the structured zone and the levels near the
+  interface are checked only qualitatively (finite, bounded, and
+  consistently lower than the floating zone's velocity, as expected for
+  `CD > bfrc_cb`).
+
+  **Why not a tight check everywhere:** ROMS's GLS vertical turbulence
+  closure diffuses momentum across the structured/floating interface, so
+  when there *is* shear (`bfrc_cb ≠ CD`), the two zones are not truly
+  independent — the diffusive coupling smears the sharp `str_a` step over
+  several grid levels near the interface, and cannot be disabled without
+  disabling `GLS_MIXING` itself (which this whole testbed depends on). The
+  interior of the larger zone still converges to its own naive
+  single-layer solution; only the levels near the interface (and the
+  minority/smaller zone, in this test's grid) are measurably perturbed.
+  This is expected physics, not a bug — see also §6's open question on
+  extending the pycnocline length-scale/mixing-timescale theory to
+  non-uniform `str_a` profiles, which would apply directly here.
+
+### 8.4 Future work
+
+- Extend the `τ_mix`/`A(c4)` sensitivity-analysis machinery (§2–§7) to the
+  two-zone floating case: a new sweep over `depth_zero_below` and
+  `bfrc_cb` (analogous to `prep_mixing_timescale_sweep.py`), and a
+  theoretical treatment of mixing across a discontinuous drag profile,
+  is the natural next step but out of scope for this implementation pass.
+- Investigate whether the interface-smoothing extent (in levels) scales
+  predictably with `AKv`/shear strength, which could inform a "safe"
+  minimum zone thickness for future floating-structure sweeps.
+
+## 9. Code and artifacts
+
+### 9.1 Environment / ROMS build
 
 - `roms` source is a separate git clone (`/home/ansju8054/roms` in this environment) checked out on the **`bodyforce`** branch — required for `mixtest_1d` to function (provides `STRUCTURE_MIXING`/body-force support not on `develop`/`structural-mixing`).
 - Python environment managed with **mamba** (`mamba env update -n roms -f environment.yml`); `scipy` was added to `environment.yml` (needed for `curve_fit`/`betainc` in §7's fits).
 - ROMS executable built via `ROMS_ROOT_DIR=<parent of roms-related/> ./roms.related/build_roms.sh -j 4`, run from the `mixtest_1d` project root (NOT from inside `roms-related/` — `build_roms.sh` derives `MY_PROJECT_DIR=${PWD}/roms`). Produces `roms-related/romsS`.
 - All 3 unit tests (`test_UV_BODYFORCE`, `test_STRUCTURE_DRAG`, `test_STRUCTURE_PRODUCTION`) re-verified passing after the rebuild.
 
-### 8.2 Files
+### 9.2 Files
 
 | File | Purpose |
 |---|---|

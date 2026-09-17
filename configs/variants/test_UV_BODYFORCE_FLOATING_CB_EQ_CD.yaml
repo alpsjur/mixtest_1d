@@ -1,0 +1,28 @@
+# Control/continuity test for the UV_BODYFORCE Gb balancing-drag term.
+#
+# Same floating-structure grid as test_UV_BODYFORCE_FLOATING.yaml (str_a
+# zeroed below depth_zero_below), but with BFRC_CB == CD. Since the
+# reference str_a used by Gb (nearest nonzero level above) is numerically
+# identical to the local str_a in the structured zone, Gb and Gd reduce to
+# the exact same drag law everywhere in the column: there is no shear, and
+# the whole column should follow the single, uniform tanh solution from
+# test_STRUCTURE_DRAG.py -- a tight, fully analytic validation of the Gb
+# formula and the metrics.F str_a_ref_omn precomputation.
+
+run:
+  name: test_UV_BODYFORCE_FLOATING_CB_EQ_CD
+
+structure:
+  str_a: 0.0001
+  depth_zero_below: 9.9
+  CD: 0.63
+  cb: 0.63
+
+bodyforce:
+  BFRC_U: 3.15
+
+time_stepping:
+  NTIMES: 30240
+
+initial:
+  ubar0: 0      # start from rest

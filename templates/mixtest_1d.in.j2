@@ -422,6 +422,12 @@ parametrization
     BFRC_TSTR == {{ bodyforce.BFRC_TSTR }}d0                    ! days, ramp start
     BFRC_TEND == {{ bodyforce.BFRC_TEND }}d0                    ! days, ramp end
 
+! Gb balancing-drag coefficient (used where str_a is zero, e.g. below a
+! floating structure's keel depth, to balance the body force using a
+! reference str_a from the nearest nonzero level above).
+
+     BFRC_CB == {{ structure.cb }}d0                            ! Gb balancing-drag coefficient
+
 ! Vertical S-coordinates parameters (see below for details), [1:Ngrids].
 
      THETA_S == {{ vertical.THETA_S }}d0                      ! surface stretching parameter

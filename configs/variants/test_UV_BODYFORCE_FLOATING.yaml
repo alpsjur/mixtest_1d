@@ -1,0 +1,36 @@
+# This is a test configuration file for the ROMS model, specifically for
+# testing the Gb balancing-drag term added to UV_BODYFORCE for floating
+# structures (str_a=0 below a given depth).
+#
+# The grid's str_a is nonzero only in the uppermost 10 s-levels (s_rho
+# indices 31-40, dist_from_surface <= 9.9 m out of H0=150 m), representing
+# a floating structure's draft, and zero in the lower 30 levels (the water
+# column below the floating structure's keel).
+#
+# In the upper (structured) zone, the body force is balanced by the usual
+# STRUCTURE_MIXING drag (STR_CD, str_a) and steady state follows the same
+# tanh solution as test_STRUCTURE_DRAG.py.
+#
+# In the lower (floating/unstructured) zone, str_a=0 locally, so the body
+# force is instead balanced by the new Gb term (BFRC_CB, using str_a
+# referenced from the nearest nonzero level above -- here, the uniform
+# str_a value of the structured zone). Because BFRC_CB != CD, the two
+# zones reach different steady-state velocities, producing shear.
+
+run:
+  name: test_UV_BODYFORCE_FLOATING
+
+structure:
+  str_a: 0.0001
+  depth_zero_below: 9.9
+  CD: 0.63
+  cb: 0.3
+
+bodyforce:
+  BFRC_U: 3.15
+
+time_stepping:
+  NTIMES: 30240
+
+initial:
+  ubar0: 0      # start from rest
