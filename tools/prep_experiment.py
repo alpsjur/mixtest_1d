@@ -97,11 +97,12 @@ def prepare_run_from_resolved(cfg: dict) -> dict:
     cfg["io"]["input_dir"] = input_dir
     cfg["io"]["output_dir"] = output_dir
 
-    # Always point ROMS.yaml_loc at <ROOT_DIR>/roms, regardless of what the
-    # config file says. This keeps the run portable across clones/moves of
-    # the repo instead of relying on a hardcoded absolute path in YAML.
+    # Always point ROMS.yaml_loc at <ROOT_DIR>/roms-related, regardless of
+    # what the config file says. This keeps the run portable across
+    # clones/moves of the repo instead of relying on a hardcoded absolute
+    # path in YAML.
     cfg.setdefault("ROMS", {})
-    cfg["ROMS"]["yaml_loc"] = os.path.join(ROOT_DIR, "roms")
+    cfg["ROMS"]["yaml_loc"] = os.path.join(ROOT_DIR, "roms-related")
 
     # 3) Hash after paths are set
     cfg.setdefault("_meta", {})

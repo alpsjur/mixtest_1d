@@ -21,8 +21,8 @@ if ROOT_DIR not in sys.path:
 
 from utils.utils import load_yaml, save_yaml, ensure_dir
 
-# Always run ROMS from <ROOT_DIR>/roms/romsS
-ROMS_EXEC = os.path.join(ROOT_DIR, "roms", "romsS")
+# Always run ROMS from <ROOT_DIR>/roms-related/romsS
+ROMS_EXEC = os.path.join(ROOT_DIR, "roms-related", "romsS")
 
 def write_run_status(logs_dir: str, status: dict) -> str:
     status_path = os.path.join(logs_dir, "status.yaml")

@@ -51,7 +51,7 @@ mixtest_1d/
 │   └── test_STRUCTURE_PRODUCTION.py  # Validates TKE production by structures
 ├── utils/
 │   └── utils.py               # Shared utilities (YAML I/O, ROMS metrics, dataset loader)
-├── roms/                      # ROMS executable and supporting files (do not modify)
+├── roms-related/                      # ROMS executable and supporting files (do not modify)
 └── environment.yml            # Conda environment specification
 ```
 
@@ -68,8 +68,8 @@ conda activate mixtest_1d   # or whatever name is in the yml
 
 ### 2. ROMS executable
 
-The compiled ROMS executable is expected at `roms/romsS`.  
-If you need to (re-)compile ROMS, see `roms/build_roms.sh`.
+The compiled ROMS executable is expected at `roms-related/romsS`.  
+If you need to (re-)compile ROMS, see `roms-related/build_roms.sh`.
 
 ---
 
@@ -167,7 +167,7 @@ variant.yaml  ─┴─► prep_experiment.py ──► make_grd.py  → grid Ne
                                       ──► mixtest_1d.in.j2 → ROMS input file
                                       ──► resolved_config.yaml
 
-resolved_config.yaml ──► run_experiment.py ──► roms/romsS → history NetCDF
+resolved_config.yaml ──► run_experiment.py ──► roms-related/romsS → history NetCDF
 
 history NetCDF + resolved_config.yaml ──► open_roms_dataset()
                                        ──► prep_timeseries / prep_profiles
