@@ -88,7 +88,7 @@ A dimensionless density anomaly is also defined (not directly used in the plots 
 
 The default `mixtest_1d` build uses `NONLIN_EOS` (a full nonlinear/compressible equation of state). Under this EOS, an initial sanity-check run showed that `φ(t)` decayed to only ~7% of its initial value and then plateaued, even though the volume-averaged temperature and salinity had become perfectly homogeneous by day ~5. Investigation showed the residual density variation was a **compressibility artifact**: in-situ (nonlinear) density retains a pressure-dependent (depth-dependent) component even when T and S are exactly uniform. Carpenter et al.'s φ formula implicitly assumes density depends only on T/S (a linear EOS), with no compressibility term.
 
-**Fix:** `roms/Include/mixtest_1d.h` was changed to `#undef NONLIN_EOS` (there is no separate `LINEAR_EOS` macro in ROMS — linear EOS is simply the default when `NONLIN_EOS` is undefined; verified via ROMS' `checkdefs.F`). ROMS was rebuilt (`roms/build_roms.sh`, non-parallel) and the existing unit test suite (`test_STRUCTURE_DRAG`, `test_STRUCTURE_PRODUCTION`, `test_UV_BODYFORCE`) was re-verified to still pass. After this fix, the sanity-check run's φ(t) decayed cleanly to ~0.
+**Fix:** `roms-related/Include/mixtest_1d.h` was changed to `#undef NONLIN_EOS` (there is no separate `LINEAR_EOS` macro in ROMS — linear EOS is simply the default when `NONLIN_EOS` is undefined; verified via ROMS' `checkdefs.F`). ROMS was rebuilt (`roms-related/build_roms.sh`, non-parallel) and the existing unit test suite (`test_STRUCTURE_DRAG`, `test_STRUCTURE_PRODUCTION`, `test_UV_BODYFORCE`) was re-verified to still pass. After this fix, the sanity-check run's φ(t) decayed cleanly to ~0.
 
 ### 3.2 Sweep design
 
@@ -395,7 +395,7 @@ Every one of the 74 runs — including the 42 `c4_fine`/`c4_near_c1` runs used t
 
 - `roms` source is a separate git clone (`/home/ansju8054/roms` in this environment) checked out on the **`bodyforce`** branch — required for `mixtest_1d` to function (provides `STRUCTURE_MIXING`/body-force support not on `develop`/`structural-mixing`).
 - Python environment managed with **mamba** (`mamba env update -n roms -f environment.yml`); `scipy` was added to `environment.yml` (needed for `curve_fit`/`betainc` in §7's fits).
-- ROMS executable built via `ROMS_ROOT_DIR=<parent of roms/> ./roms/build_roms.sh -j 4`, run from the `mixtest_1d` project root (NOT from inside `roms/` — `build_roms.sh` derives `MY_PROJECT_DIR=${PWD}/roms`). Produces `roms/romsS`.
+- ROMS executable built via `ROMS_ROOT_DIR=<parent of roms-related/> ./roms.related/build_roms.sh -j 4`, run from the `mixtest_1d` project root (NOT from inside `roms-related/` — `build_roms.sh` derives `MY_PROJECT_DIR=${PWD}/roms`). Produces `roms-related/romsS`.
 - All 3 unit tests (`test_UV_BODYFORCE`, `test_STRUCTURE_DRAG`, `test_STRUCTURE_PRODUCTION`) re-verified passing after the rebuild.
 
 ### 8.2 Files
@@ -403,7 +403,7 @@ Every one of the 74 runs — including the 42 `c4_fine`/`c4_near_c1` runs used t
 | File | Purpose |
 |---|---|
 | `utils/utils.py` | `compute_phi`, `compute_Pd`, `compute_Pstr`, `analytic_mixing_timescale` — core physics/diagnostics, plus the `c4 ≤ GLS.C1` validation check. |
-| `roms/Include/mixtest_1d.h` | `NONLIN_EOS` undefined (linear EOS), required for physically meaningful `φ(t)`. |
+| `roms-related/Include/mixtest_1d.h` | `NONLIN_EOS` undefined (linear EOS), required for physically meaningful `φ(t)`. |
 | `environment.yml` | Added `scipy` dependency (used by `analysis/predict_pea.py` for `curve_fit`/`betainc`). |
 | `templates/mixing_timescale_sweep.yaml` | Original sweep definition (CD x c4 x temp_dT x H0, `z_t` fixed at 40 m). 16 runs. |
 | `templates/pycnocline_zt_sweep.yaml` | Follow-up sweep definition (§4.6): explicit `(H0, z_t)` pairs x `c4`, varying `z_t` independently of `H0`. 16 runs. |
@@ -432,7 +432,7 @@ To regenerate this analysis from scratch:
 # Environment / ROMS build (mamba, bodyforce branch)
 mamba env update -n roms -f environment.yml
 export ROMS_ROOT_DIR=/path/to/parent/of/roms/clone   # containing roms/ on the bodyforce branch
-./roms/build_roms.sh -j 4                            # run from the mixtest_1d project root
+./roms-related/build_roms.sh -j 4                            # run from the mixtest_1d project root
 python tests/run_tests.py --run-model                # verify all 3 unit tests still pass
 
 # Sweep 1: original 16-run sweep
