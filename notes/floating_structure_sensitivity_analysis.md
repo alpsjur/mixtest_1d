@@ -163,9 +163,13 @@ Analysis code: `analysis/floating_depth.py`
 | 0.25 | 0.85 | 150 | 3.684 | 3.219 | 1.15 |
 | 0.10 | 0.85 | 150 | 9.209 | — (not reached) | — |
 
-(Figure: `figures/floating_depth_tau_x_H0.png` — diagnostic `τ_x` vs.
-`depth_frac`, per `(c4, H0)` group, with the theory overlaid as dashed
-lines.)
+![Diagnostic τ_x vs. depth_frac, grouped by (c4, H0); theory overlaid as dashed lines](../figures/floating_depth_tau_x_H0.png)
+
+*Figure 1: diagnostic `τ_x` (solid) vs. `depth_frac`, grouped by
+`(c4, H0)`, with the theory prediction (`τ_x_theory ≈ x_frac ·
+τ_mix_theory`, dashed, same colour) overlaid for comparison. The
+crossover between over- and under-prediction is visible around
+`depth_frac ≈ 0.3–0.4` for every group.*
 
 **Key findings:**
 
@@ -208,6 +212,14 @@ rather than `tau_x_theory`) tells a different, more complete story:
 | 1.00 | ~18.5 | True | 1.000 |
 | 0.50 | ~36.9 | True | 1.000 |
 | 0.25 | ~73.7 | True | 0.991 |
+
+![phi_star(t) for the long-run subset, one curve per depth_frac](../figures/floating_depth_longrun_phi_H0.png)
+
+*Figure 2: `φ(t)/φ(0)` over time for the long-run subset
+(`H0=150, z_t=40, c4=0.44`), one curve per `depth_frac`. All three
+configurations decay to essentially zero given enough time — thinner
+structured zones (smaller `depth_frac`) simply need much longer to get
+there, with no sign of flattening out above zero.*
 
 Even at `depth_frac = 0.25`, given enough time (~74 days, vs. the
 earlier 14-day check), `φ(t)` decays essentially to zero (`phi_star`
@@ -287,7 +299,7 @@ power balance), which is left as future work (§6).
 - `analysis/mixing_timescale.py`: `mixing_timescale()` extended with
   `x_frac`/`tail_frac` diagnostics (additive, backward-compatible).
 - `analysis/floating_depth.py` (new): `summarize_floating_sweep`,
-  `plot_tau_x_vs_depth_frac`, `summarize_plateau`.
+  `plot_tau_x_vs_depth_frac`, `summarize_plateau`, `plot_phi_longrun`.
 - `tools/prep_floating_depth_sweep.py` (new): prep script with
   `structure.depth_frac → structure.depth_zero_below` conversion and
   dual `NTIMES`-sizing bases (`tau_x`/`tau_mix`).

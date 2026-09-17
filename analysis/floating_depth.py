@@ -144,6 +144,57 @@ def summarize_plateau(manifest_path: str, plateau_frac: float = 0.5,
     return sorted(rows, key=lambda r: r["depth_frac"])
 
 
+def plot_phi_longrun(manifest_path: str, ax=None, plateau_frac: float = 0.5,
+                      length_scale: str = "H0"):
+    """
+    Plot phi_star(t) (in days, not the dimensionless t_star) for every run
+    in the long-run/plateau-detection subset, one curve per
+    structure.depth_frac. Illustrates whether -- and how slowly -- phi(t)
+    approaches zero once the structured zone only occupies part of the
+    water column (see notes/floating_structure_sensitivity_analysis.md
+    sec 4.2): thinner structured zones take much longer to reach a given
+    mixed fraction, but (at least for depth_frac >= 0.25) do eventually
+    reach ~full mixing rather than plateauing at a permanent floor.
+    """
+    import matplotlib.pyplot as plt
+
+    manifest = load_yaml(manifest_path)
+    runs = sorted(manifest.get("runs", []),
+                  key=lambda r: r.get("params", {}).get("structure.depth_frac", 0))
+
+    if ax is None:
+        _, ax = plt.subplots(figsize=(7, 5))
+
+    cmap = plt.get_cmap("viridis")
+    n_plotted = 0
+    n_total = len(runs)
+    for r in runs:
+        resolved_config = r["resolved_config"]
+        if not os.path.isfile(resolved_config):
+            continue
+        try:
+            result = mixing_timescale(resolved_config, plateau_frac=plateau_frac,
+                                       length_scale=length_scale)
+        except Exception as e:
+            print(f"Skipping {r.get('run_name')}: {e}")
+            continue
+        depth_frac = r.get("params", {}).get("structure.depth_frac")
+        ax.plot(
+            result["days"], result["phi_star"],
+            label=f"depth_frac={depth_frac}",
+            color=cmap(n_plotted / max(n_total - 1, 1)),
+        )
+        n_plotted += 1
+
+    ax.axhline(0.0, color="k", linestyle=":", linewidth=1)
+    ax.set_xlabel("Time (days)")
+    ax.set_ylabel(r"$\phi(t)/\phi(0)$")
+    ax.set_title("Long-run mixing: does $\\phi(t)$ plateau at a nonzero residual?")
+    ax.grid(True, alpha=0.3)
+    ax.legend(fontsize=8, loc="best")
+    return ax
+
+
 def main():
     import argparse
     parser = argparse.ArgumentParser(description=__doc__)
@@ -185,6 +236,17 @@ def main():
         for r in rows:
             print(f"{r['run_name']:45s} {r['depth_frac']:>10} {str(r['plateaued']):>10s} "
                   f"{r['mixed_fraction_inf']:>18.3f}")
+
+        ax3 = plot_phi_longrun(args.longrun, plateau_frac=args.plateau_frac,
+                                length_scale=args.length_scale)
+        import matplotlib.pyplot as plt
+        if args.save:
+            filename3 = f"figures/floating_depth_longrun_phi_{args.length_scale}.png"
+            os.makedirs(os.path.dirname(filename3), exist_ok=True)
+            plt.savefig(filename3)
+            print(f"Plot saved to {filename3}")
+        else:
+            plt.show()
 
     if not args.sweep and not args.longrun:
         parser.error("Provide --sweep and/or --longrun manifest.yaml")
