@@ -46,6 +46,8 @@ from utils.utils import (
     compute_phi,
     compute_Pstr,
     analytic_mixing_timescale,
+    find_tau_x_star,
+    detect_phi_plateau,
     load_yaml,
     G,
 )
@@ -63,7 +65,8 @@ def pycnocline_length_scale(params: dict) -> float:
 
 
 def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
-                      length_scale: str = "H0") -> dict:
+                      length_scale: str = "H0", x_frac: float = 0.10,
+                      tail_frac: float = 0.1) -> dict:
     """
     Compute phi(t), Pstr(t), and the theoretical/diagnostic mixing time
     scales for a single completed run.
@@ -83,12 +86,25 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
         geometric mean of the pycnocline's distances to the two
         boundaries, found empirically to collapse the sweep much better
         when grid.H0 is varied at fixed initial.temp_zt).
+    x_frac : float
+        Fractional reduction of phi used for the tau_x diagnostics (see
+        utils.find_tau_x_star / utils.analytic_mixing_timescale). Default
+        0.10 (time to reach 10% mixing) -- the metric used for floating
+        structures, where full-column mixing (t_star_mix, phi_star<0.05)
+        may never be reached (see notes/floating_structure_sensitivity_analysis.md).
+    tail_frac : float
+        Passed to utils.detect_phi_plateau -- fraction of the run (from
+        the end) used to check whether phi(t) has plateaued at a nonzero
+        residual (relevant for floating structures only; harmless for
+        bottom-fixed runs, where phi always plateaus near 0).
 
     Returns
     -------
     dict with keys:
         days, phi, phi_star, Pstr, Pstr_diag,
-        tau_mix_theory, tau_mix_diagnostic, t_star, params
+        tau_mix_theory, tau_mix_diagnostic, t_star, params,
+        (new, additive) x_frac, tau_x_theory, tau_x_diagnostic,
+        plateaued, phi_inf, mixed_fraction_inf, rel_tail_slope
     """
     ds, grid, params = open_roms_dataset(resolved_config_path)
 
@@ -104,8 +120,9 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     i0 = max(0, int(np.floor(n * (1.0 - plateau_frac))))
     Pstr_diag = float(np.mean(Pstr.values[i0:]))
 
-    theory = analytic_mixing_timescale(params)
+    theory = analytic_mixing_timescale(params, x_frac=x_frac)
     tau_mix_theory = theory["tau_mix"]
+    tau_x_theory = theory["tau_x"]
     delta_rho = theory["delta_rho"]
     H0 = float(params["grid"]["H0"])
 
@@ -151,6 +168,15 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
     else:
         t_star_mix = np.nan
 
+    # tau_x: diagnostic time (seconds) to reach x_frac fractional mixing --
+    # the metric used for floating structures (see docstring), where full
+    # completion (t_star_mix above) may not be reached within a practical
+    # run. Computed directly in seconds (not the dimensionless t_star) so
+    # it is independent of the length_scale/Pstr_diag choice used above.
+    tau_x_diagnostic = find_tau_x_star(t_seconds, phi_star, x_frac=x_frac)
+
+    plateau = detect_phi_plateau(phi_vals, tail_frac=tail_frac)
+
     return {
         "days": days,
         "phi": phi_vals,
@@ -161,6 +187,13 @@ def mixing_timescale(resolved_config_path: str, plateau_frac: float = 0.5,
         "tau_mix_diagnostic": tau_mix_diagnostic,
         "t_star": t_star,
         "t_star_mix": t_star_mix,
+        "x_frac": x_frac,
+        "tau_x_theory": tau_x_theory,
+        "tau_x_diagnostic": tau_x_diagnostic,
+        "plateaued": plateau["plateaued"],
+        "phi_inf": plateau["phi_inf"],
+        "mixed_fraction_inf": plateau["mixed_fraction_inf"],
+        "rel_tail_slope": plateau["rel_tail_slope"],
         "params": params,
     }
 

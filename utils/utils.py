@@ -357,18 +357,149 @@ def compute_phi(ds, grid, params):
     return phi, rho_mix0
 
 
+def find_tau_x_star(t_star: np.ndarray, phi_star: np.ndarray, x_frac: float = 0.10) -> float:
+    """
+    Empirical (diagnostic) dimensionless time t*_x at which phi_star first
+    drops to (1 - x_frac) of its initial value -- i.e. the time to reach
+    x_frac fractional mixing. Generalizes the "mixing complete" (x_frac ~
+    0.95) diagnostic used in mixing_timescale_analysis.md to any threshold,
+    which is what floating-structure runs need (phi may plateau above zero
+    and never reach x_frac=0.95, but should still reach smaller thresholds
+    like the default x_frac=0.10).
+
+    Uses linear interpolation between the last sample >= threshold and the
+    first sample < threshold, for sub-output-step resolution (same approach
+    as the original t_star_mix logic in analysis/mixing_timescale.py).
+
+    Parameters
+    ----------
+    t_star : np.ndarray
+        Dimensionless time (or plain time, in any consistent units).
+    phi_star : np.ndarray
+        phi(t)/phi(0), same length as t_star.
+    x_frac : float
+        Fractional reduction of interest (default 0.10, i.e. 10% mixing).
+
+    Returns
+    -------
+    float
+        t_star at which phi_star first crosses (1 - x_frac), or np.nan if
+        that threshold is never reached within the given series.
+    """
+    threshold = 1.0 - x_frac
+    below = np.where(phi_star <= threshold)[0]
+    if len(below) == 0:
+        return np.nan
+    i1 = below[0]
+    if i1 == 0:
+        return float(t_star[0])
+    i0 = i1 - 1
+    x0, x1 = phi_star[i0], phi_star[i1]
+    y0, y1 = t_star[i0], t_star[i1]
+    frac = (threshold - x0) / (x1 - x0) if x1 != x0 else 0.0
+    return float(y0 + frac * (y1 - y0))
+
+
+def detect_phi_plateau(phi: np.ndarray, tail_frac: float = 0.1,
+                        rel_slope_tol: float = 0.02) -> dict:
+    """
+    Check whether phi(t) has plateaued (reached a quasi-steady residual)
+    by the end of a run -- relevant for floating structures, where
+    turbulence production is confined to a shallow structured zone and may
+    be unable to fully mix the water column (phi -> phi_inf > 0 rather
+    than phi -> 0), unlike the bottom-fixed case where phi always
+    eventually decays to ~0.
+
+    Compares the average slope of phi over the last `tail_frac` of the
+    series to phi's total initial-to-final change: a small relative slope
+    indicates phi has stopped changing appreciably (a plateau), as opposed
+    to still actively decaying when the run ends.
+
+    Parameters
+    ----------
+    phi : np.ndarray
+        phi(t) time series (any monotonic time sampling; only order matters).
+    tail_frac : float
+        Fraction of the series (from the end) used to estimate the
+        plateau/tail slope. Default 0.1 (last 10% of samples).
+    rel_slope_tol : float
+        Relative-slope threshold below which phi is considered plateaued
+        (tail slope, normalized by phi(0) and by the number of tail
+        samples, compared to this tolerance). Default 0.02.
+
+    Returns
+    -------
+    dict with keys:
+        plateaued            bool
+        phi_inf               float, mean of phi over the tail window
+                               (the estimated asymptotic/residual phi)
+        mixed_fraction_inf    float, 1 - phi_inf/phi(0)
+        rel_tail_slope        float, the diagnostic slope used for the
+                               plateau decision (for inspection/tuning)
+    """
+    phi = np.asarray(phi, dtype=float)
+    n = len(phi)
+    phi0 = phi[0]
+    i0 = max(0, int(np.floor(n * (1.0 - tail_frac))))
+    tail = phi[i0:]
+
+    phi_inf = float(np.mean(tail))
+    mixed_fraction_inf = 1.0 - phi_inf / phi0 if phi0 != 0 else np.nan
+
+    if len(tail) >= 2 and phi0 != 0:
+        # Per-sample slope over the tail window, normalized by phi(0) so
+        # the tolerance is dimensionless/comparable across runs.
+        rel_tail_slope = float(abs(tail[-1] - tail[0]) / (len(tail) - 1) / abs(phi0))
+    else:
+        rel_tail_slope = np.nan
+
+    plateaued = bool(np.isfinite(rel_tail_slope) and rel_tail_slope < rel_slope_tol)
+
+    return {
+        "plateaued": plateaued,
+        "phi_inf": phi_inf,
+        "mixed_fraction_inf": mixed_fraction_inf,
+        "rel_tail_slope": rel_tail_slope,
+    }
+
+
+def load_str_a(params: dict) -> xr.DataArray:
+    """
+    Load the actual str_a(z,y,x) field from the run's grid NetCDF file
+    (params["io"]["input_dir"]/params["files"]["grd"]), as written by
+    tools/make_grd.py::build_str_a. This is the ground truth for the
+    structure area density profile -- correct for both spatially-uniform
+    (bottom-fixed) and depth-zeroed (floating) configurations, since
+    build_str_a already encodes structure.depth_zero_below there.
+
+    Returns
+    -------
+    str_a : xarray.DataArray
+        dims (s_rho, eta_rho, xi_rho), same horizontal/vertical grid as
+        the history file's rho-point fields.
+    """
+    grd_path = os.path.join(params["io"]["input_dir"], params["files"]["grd"])
+    with xr.open_dataset(grd_path) as grd_ds:
+        str_a = grd_ds["str_a"].load()
+    return str_a
+
+
 def compute_Pd(ds, grid, params):
     """
     Structure-drag turbulence production rate P_d(z,t), following the
     STRUCTURE_MIXING parametrization (Rennau, Schimmels & Burchard 2012):
 
-        P_d = 0.5 * CD * str_a * (u^2 + v^2)^(3/2)     [m2 s-3]
+        P_d = 0.5 * CD * str_a(z) * (u^2 + v^2)^(3/2)     [m2 s-3]
 
-    str_a and CD are taken from the resolved config (params["structure"]),
-    i.e. this assumes str_a is spatially uniform over the water column, as
-    is the case for the baseline/sensitivity-sweep configs (depth_zero_below
-    set far below H0). If a depth-varying str_a is used, this needs to be
-    read from the grid file instead.
+    CD is taken from the resolved config (params["structure"]["CD"]);
+    str_a(z) is read from the run's grid file (load_str_a), so this is
+    correct for any str_a(z) profile -- uniform (bottom-fixed structures)
+    or depth-zeroed (floating structures, structure.depth_zero_below <
+    grid.H0). str_a(z) is exactly zero below depth_zero_below, so P_d is
+    correctly zero there regardless of CD -- no real turbulence production
+    is assumed at depths with no physical structure, even though the
+    UV_BODYFORCE Gb term still balances momentum there (see
+    ROMS/Nonlinear/rhs3d.F and notes/mixing_timescale_analysis.md sec 8).
 
     Returns
     -------
@@ -376,7 +507,7 @@ def compute_Pd(ds, grid, params):
         P_d(z,t) at rho-points, dims (ocean_time, s_rho, eta_rho, xi_rho).
     """
     CD = float(params["structure"]["CD"])
-    str_a = float(params["structure"]["str_a"])
+    str_a = load_str_a(params)
 
     u_r = grid.interp(ds["u"], "X")
     v_r = grid.interp(ds["v"], "Y")
@@ -414,9 +545,10 @@ def compute_Pstr(ds, grid, params):
     return Pstr
 
 
-def analytic_mixing_timescale(cfg: dict) -> dict:
+def analytic_mixing_timescale(cfg: dict, x_frac: float = 0.10) -> dict:
     """
-    Analytic (pre-run) estimate of the mixing time scale tau_mix, following
+    Analytic (pre-run) estimate of the mixing time scale tau_mix, and of
+    tau_x -- the time to reach a given fractional reduction of phi -- following
     Carpenter et al. (2016).
 
     Note: the body force in this idealised setup represents *any* steady
@@ -430,34 +562,76 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
         u_inf = sqrt(2 * BFRC_U / (CD * str_a))
 
     This requires BFRC_V == 0 (else the 2D force/drag balance is not a
-    simple closed-form expression) and str_a active over the full depth
-    (structure.depth_zero_below >= grid.H0), since P_str = rho0 * H * P_d
-    assumes P_d is depth-uniform.
+    simple closed-form expression).
 
-    tau_mix = g * delta_rho * H^2 / P_str
-            = g * delta_rho * H / (rho0 * P_d)
+    Floating structures (structure.depth_zero_below < grid.H0): str_a is
+    zero below depth_zero_below, so turbulence production P_d is only
+    generated in the upper "structured" zone of thickness
+    d_struct = min(depth_zero_below, H0), not over the whole column --
+    even though (per the UV_BODYFORCE Gb balancing term, see
+    notes/mixing_timescale_analysis.md sec 8) the *momentum* balance/u_inf
+    is unaffected, so long as structure.cb == structure.CD (no shear
+    between the structured and floating zones -- this is checked below
+    and required for this formula to hold; runs with cb != CD need
+    tau_mix/tau_x estimated diagnostically instead, from a model run, since
+    the two zones then have different, coupled steady states, see
+    tests/test_UV_BODYFORCE_FLOATING.py):
+
+        P_str = rho0 * d_struct * P_d
+
+    For a fully-structured column (depth_zero_below >= H0), d_struct = H0
+    and this reduces exactly to the original formula.
+
+        tau_mix = g * delta_rho * H^2 / P_str
+
+    is the (Carpenter et al.) *completion*-time scale (phi -> 0), a good
+    normalizing time scale but, for floating structures, not necessarily a
+    time actually reached within a practical run (phi may plateau at a
+    nonzero residual once the structured zone is a small fraction of H0 --
+    see notes/floating_structure_sensitivity_analysis.md). The more
+    generally useful predicted time scale is tau_x, the time to reach a
+    fixed fractional reduction of phi (default x_frac=0.10, i.e. 10%
+    mixing), estimated here via the short-time/early-mixing linear
+    approximation (a first-order Taylor expansion of phi(t) at t=0 using
+    the constant, quasi-steady P_str):
+
+        tau_x_theory ~= x_frac * tau_mix
+
+    (This approximation is expected to be reasonable for modest x_frac,
+    since the empirically-fit universal shape function S(x*) in
+    mixing_timescale_analysis.md sec 7.3 is close to linear near x*=0; it
+    is not expected to remain accurate as x_frac approaches 1, i.e. near
+    full completion.)
 
     Use this to size NTIMES for a run *before* it has been executed (e.g. in
     a sensitivity sweep where each parameter combination implies a different
-    tau_mix). To check whether the actual model run mixes on this predicted
-    time scale, compare against the diagnostic P_str from compute_Pstr()
-    and the phi(t) curve from compute_phi() after the fact.
+    tau_mix/tau_x). To check whether the actual model run mixes on this
+    predicted time scale, compare against the diagnostic P_str from
+    compute_Pstr() and the phi(t) curve from compute_phi() after the fact
+    (see mixing_timescale() / find_tau_x() for the diagnostic counterpart).
 
     Parameters
     ----------
     cfg : dict
         Resolved (or about-to-be-resolved) run config, with at least
         structure.{CD,str_a,depth_zero_below}, bodyforce.{BFRC_U,BFRC_V},
-        grid.H0, initial.temp_dT.
+        grid.H0, initial.temp_dT. structure.cb, if present, must equal
+        structure.CD when depth_zero_below < grid.H0.
+    x_frac : float, optional
+        Fractional reduction of phi used for tau_x (default 0.10, i.e. the
+        time to reach 10% mixing). Must be in (0, 1].
 
     Returns
     -------
     dict with keys:
         u_inf         quasi-steady speed [m/s]
         Pd            structure-drag production [m2/s3]
+        d_struct      structured-zone thickness used in Pstr [m]
         Pstr          depth-integrated power extraction [W/m2]
         delta_rho     top-to-bottom density difference [kg/m3]
-        tau_mix       predicted mixing time scale [s]
+        tau_mix       predicted full-completion mixing time scale [s]
+        x_frac        the x_frac used below
+        tau_x         predicted time to x_frac mixing [s]
     """
     CD = float(cfg["structure"]["CD"])
     str_a = float(cfg["structure"]["str_a"])
@@ -473,11 +647,22 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
             "drag balance). For BFRC_V != 0, estimate tau_mix from a model "
             "run instead (compute_Pstr + compute_phi)."
         )
+    if not (0.0 < x_frac <= 1.0):
+        raise ValueError("x_frac must be in (0, 1].")
+
+    d_struct = min(depth_zero_below, H0)
     if depth_zero_below < H0:
-        raise ValueError(
-            "analytic_mixing_timescale assumes str_a is uniform over the "
-            "full water column (structure.depth_zero_below >= grid.H0)."
-        )
+        cb = cfg.get("structure", {}).get("cb")
+        if cb is None or not np.isclose(float(cb), CD):
+            raise ValueError(
+                "analytic_mixing_timescale with structure.depth_zero_below "
+                f"({depth_zero_below}) < grid.H0 ({H0}) (a floating-structure "
+                "configuration) requires structure.cb == structure.CD (no "
+                "shear between the structured and floating zones), so that "
+                "u_inf/P_str can be predicted from the simple uniform-drag "
+                "balance. Estimate tau_mix/tau_x diagnostically from a model "
+                "run instead if cb != CD."
+            )
     if str_a <= 0.0 or CD <= 0.0:
         raise ValueError("analytic_mixing_timescale requires str_a > 0 and CD > 0.")
 
@@ -494,20 +679,24 @@ def analytic_mixing_timescale(cfg: dict) -> dict:
 
     u_inf = np.sqrt(2.0 * BFRC_U / (CD * str_a))
     Pd = 0.5 * CD * str_a * u_inf ** 3
-    Pstr = RHO0 * H0 * Pd
+    Pstr = RHO0 * d_struct * Pd
     delta_rho = R0 * TCOEF * temp_dT
 
     if delta_rho <= 0.0:
         raise ValueError("analytic_mixing_timescale requires initial.temp_dT > 0.")
 
     tau_mix = G * delta_rho * H0 ** 2 / Pstr
+    tau_x = x_frac * tau_mix
 
     return {
         "u_inf": u_inf,
         "Pd": Pd,
+        "d_struct": d_struct,
         "Pstr": Pstr,
         "delta_rho": delta_rho,
         "tau_mix": tau_mix,
+        "x_frac": x_frac,
+        "tau_x": tau_x,
     }
 
 

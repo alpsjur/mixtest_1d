@@ -1,0 +1,40 @@
+sweep:
+  id: floating-structure depth sensitivity (tau_x, structured-zone thickness)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # See notes/floating_structure_sensitivity_analysis.md for the full
+  # rationale. This sweep varies the structured-zone thickness
+  # (structure.depth_zero_below, expressed here as a fraction of grid.H0
+  # via the synthetic "structure.depth_frac" parameter -- converted to an
+  # absolute depth by tools/prep_floating_depth_sweep.py using each pair's
+  # H0), crossed with structure.c4 and two (H0, temp_zt) pairs (same zt,
+  # different H0, isolating the H0/length-scale effect). depth_frac=1.0
+  # reproduces the fully-structured baseline (an internal consistency
+  # check: should match the existing mixing_timescale/pycnocline_zt sweep
+  # results at the same (H0, temp_zt, c4)).
+  #
+  # bfrc_cb == CD (no shear) is required throughout -- see
+  # utils.analytic_mixing_timescale, which raises otherwise.
+  pairs:
+    - {H0: 75.0, temp_zt: 40.0}
+    - {H0: 150.0, temp_zt: 40.0}
+
+  parameters:
+    structure.c4: [0.44, 0.85]
+    structure.depth_frac: [1.0, 0.75, 0.5, 0.25, 0.1]
+
+  fixed:
+    structure.CD: 0.63
+    structure.cb: 0.63   # == CD: no shear between structured/floating zones
+    initial.temp_dT: 10.0
+
+  run_name_template: "floatdepth_c4{structure.c4}_H{grid.H0}_zt{initial.temp_zt}_df{structure.depth_frac}"
+
+  output_dir: "sweeps/floating_depth"
+
+  # NTIMES sized from tau_x_theory (time to reach x_frac=10% mixing), not
+  # the full-completion tau_mix -- see prep_floating_depth_sweep.py.
+  ntimes_basis: "tau_x"
+  x_frac: 0.10
+  ntimes_margin: 3.0

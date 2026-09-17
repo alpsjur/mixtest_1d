@@ -1,0 +1,32 @@
+sweep:
+  id: floating-structure long-run plateau check (tau_mix basis)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Small, separate sweep (3 runs) used only to check whether phi(t)
+  # plateaus at a nonzero residual for thinner structured zones, and to
+  # measure phi_inf / mixed_fraction_inf (see utils.detect_phi_plateau).
+  # Sized from tau_mix_theory (the full-completion time scale) with extra
+  # margin, since we specifically want to run *past* any early-time
+  # tau_x-scale behavior into the long-time plateau regime -- deliberately
+  # NOT run for the whole main sweep (templates/floating_depth_sweep.yaml)
+  # to keep that sweep's runs cheap. See
+  # notes/floating_structure_sensitivity_analysis.md sec 3/4.
+  pairs:
+    - {H0: 150.0, temp_zt: 40.0}
+
+  parameters:
+    structure.depth_frac: [1.0, 0.5, 0.25]
+
+  fixed:
+    structure.c4: 0.44   # strong mixing (same default as baseline)
+    structure.CD: 0.63
+    structure.cb: 0.63   # == CD: no shear between structured/floating zones
+    initial.temp_dT: 10.0
+
+  run_name_template: "floatdepth_longrun_H{grid.H0}_zt{initial.temp_zt}_df{structure.depth_frac}"
+
+  output_dir: "sweeps/floating_depth_longrun"
+
+  ntimes_basis: "tau_mix"
+  ntimes_margin: 2.0
