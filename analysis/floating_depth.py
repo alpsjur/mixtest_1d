@@ -62,8 +62,8 @@ def summarize_floating_sweep(manifest_path, x_frac: float = 0.10,
     tau_x_theory/tau_x_diagnostic (days), tau_mix_theory/tau_mix_diagnostic
     (days, reference scale only -- may not be reached), the plateau
     diagnostics (plateaued, mixed_fraction_inf), and the pycnocline-
-    penetration diagnostics d_struct, pycnocline_edge, penetration_margin,
-    penetrating (see pycnocline_edge()).
+    reach diagnostics d_struct, pycnocline_edge, reach_margin,
+    reaches_pycnocline (see pycnocline_edge()).
     """
     manifest_paths = [manifest_path] if isinstance(manifest_path, str) else list(manifest_path)
     rows = []
@@ -83,7 +83,7 @@ def summarize_floating_sweep(manifest_path, x_frac: float = 0.10,
                 continue
             p = r.get("params", {})
             edge = pycnocline_edge(result["params"], k=k_edge)
-            penetration_margin = result["d_struct"] - edge
+            reach_margin = result["d_struct"] - edge
             rows.append({
                 "run_name": r.get("run_name"),
                 "depth_frac": p.get("structure.depth_frac"),
@@ -92,8 +92,8 @@ def summarize_floating_sweep(manifest_path, x_frac: float = 0.10,
                 "temp_zt": p.get("initial.temp_zt"),
                 "d_struct": result["d_struct"],
                 "pycnocline_edge": edge,
-                "penetration_margin": penetration_margin,
-                "penetrating": bool(penetration_margin >= 0),
+                "reach_margin": reach_margin,
+                "reaches_pycnocline": bool(reach_margin >= 0),
                 "tau_x_theory_days": result["tau_x_theory"] / 86400.0,
                 "tau_x_diagnostic_days": (
                     result["tau_x_diagnostic"] / 86400.0
@@ -108,10 +108,10 @@ def summarize_floating_sweep(manifest_path, x_frac: float = 0.10,
     return rows
 
 
-def plot_tau_x_ratio_vs_penetration(manifest_paths, ax=None, x_frac: float = 0.10,
-                                     plateau_frac: float = 0.5, k_edge: float = 1.0):
+def plot_tau_x_ratio_vs_reach(manifest_paths, ax=None, x_frac: float = 0.10,
+                               plateau_frac: float = 0.5, k_edge: float = 1.0):
     """
-    Plot the theory/diagnostic tau_x ratio against penetration_margin
+    Plot the theory/diagnostic tau_x ratio against reach_margin
     (d_struct - pycnocline_edge), across one or more sweep manifests,
     colored by grid.H0. This is the key diagnostic for testing whether
     "does the structured zone reach the pycnocline" (rather than
@@ -131,17 +131,17 @@ def plot_tau_x_ratio_vs_penetration(manifest_paths, ax=None, x_frac: float = 0.1
     H0_vals = sorted({r["H0"] for r in rows})
     cmap = plt.get_cmap("viridis")
     for i, H0 in enumerate(H0_vals):
-        group = sorted([r for r in rows if r["H0"] == H0], key=lambda r: r["penetration_margin"])
-        margins = [r["penetration_margin"] for r in group]
+        group = sorted([r for r in rows if r["H0"] == H0], key=lambda r: r["reach_margin"])
+        margins = [r["reach_margin"] for r in group]
         ratios = [r["tau_x_theory_days"] / r["tau_x_diagnostic_days"] for r in group]
         ax.plot(margins, ratios, marker="o", color=cmap(i / max(len(H0_vals) - 1, 1)),
                 label=f"H0={H0}")
 
     ax.axvline(0.0, color="k", linestyle="--", linewidth=1, label="pycnocline edge")
     ax.axhline(1.0, color="k", linestyle=":", linewidth=1)
-    ax.set_xlabel(r"penetration margin $= d_{struct} - (z_t - k\,h_t)$ (m)")
+    ax.set_xlabel(r"reach margin $= d_{struct} - (z_t - k\,h_t)$ (m)")
     ax.set_ylabel(r"$\tau_{x}$ theory / diagnostic ratio")
-    ax.set_title("Theory/diagnostic ratio vs. pycnocline penetration")
+    ax.set_title("Theory/diagnostic ratio vs. pycnocline reach")
     ax.grid(True, alpha=0.3)
     ax.legend(fontsize=8, loc="best")
     return ax
@@ -258,19 +258,20 @@ def plot_phi_longrun(manifest_path: str, ax=None, plateau_frac: float = 0.5,
     return ax
 
 
-def gather_penetrating_curves(manifest_paths, length_scale: str = "H0",
-                               x_frac: float = 0.10, plateau_frac: float = 0.5,
-                               k_edge: float = 1.0):
+def gather_reaching_curves(manifest_paths, length_scale: str = "H0",
+                            x_frac: float = 0.10, plateau_frac: float = 0.5,
+                            k_edge: float = 1.0):
     """
     Collect (run_name, H0, t_star, phi_star) for every completed run in
-    one or more sweep manifests that is classified as "penetrating"
-    (structured zone reaches into the pycnocline, per pycnocline_edge()),
-    computing t_star with the given length_scale ("H0", "pycnocline", or
-    "d_struct" -- see mixing_timescale()). Used for phase-A collapse
-    exploration (notes/floating_structure_sensitivity_analysis.md sec
-    4.4): only pre-threshold (t_star <= 1) portions are trustworthy for
-    the "how far did it get" curve shape, but the full curve is returned
-    here for inspection.
+    one or more sweep manifests that is classified as "reaching the
+    pycnocline" (structured zone reaches into the pycnocline, per
+    pycnocline_edge()), computing t_star with the given length_scale
+    ("H0", "pycnocline", or "d_struct" -- see mixing_timescale()). Used
+    for phase-A collapse exploration
+    (notes/floating_structure_sensitivity_analysis.md sec 4.4): only
+    pre-threshold (t_star <= 1) portions are trustworthy for the "how
+    far did it get" curve shape, but the full curve is returned here for
+    inspection.
     """
     manifest_paths = [manifest_paths] if isinstance(manifest_paths, str) else list(manifest_paths)
     curves = []
@@ -288,7 +289,7 @@ def gather_penetrating_curves(manifest_paths, length_scale: str = "H0",
                 continue
             edge = pycnocline_edge(result["params"], k=k_edge)
             if result["d_struct"] - edge < 0:
-                continue  # non-penetrating -- deferred to phase B
+                continue  # does not reach the pycnocline -- deferred to phase B
             p = r.get("params", {})
             curves.append({
                 "run_name": r.get("run_name"),
@@ -330,21 +331,21 @@ def collapse_spread_score(curves, t_star_max: float = 1.0, n_grid: int = 50) -> 
     return float(np.mean(stds)) if stds else np.nan
 
 
-def plot_penetrating_collapse(manifest_paths, ax=None, length_scale: str = "H0",
-                               x_frac: float = 0.10, plateau_frac: float = 0.5,
-                               k_edge: float = 1.0, t_star_max: float = 1.2):
+def plot_reaching_collapse(manifest_paths, ax=None, length_scale: str = "H0",
+                            x_frac: float = 0.10, plateau_frac: float = 0.5,
+                            k_edge: float = 1.0, t_star_max: float = 1.2):
     """
-    Plot phi_star(t_star) for only the "penetrating" runs (see
-    gather_penetrating_curves), colored by grid.H0, for a given
+    Plot phi_star(t_star) for only the runs that reach the pycnocline
+    (see gather_reaching_curves), colored by grid.H0, for a given
     length_scale candidate. Prints the collapse_spread_score alongside.
     Phase-A exploration -- see
     notes/floating_structure_sensitivity_analysis.md sec 4.4.
     """
     import matplotlib.pyplot as plt
 
-    curves = gather_penetrating_curves(manifest_paths, length_scale=length_scale,
-                                        x_frac=x_frac, plateau_frac=plateau_frac,
-                                        k_edge=k_edge)
+    curves = gather_reaching_curves(manifest_paths, length_scale=length_scale,
+                                     x_frac=x_frac, plateau_frac=plateau_frac,
+                                     k_edge=k_edge)
     score = collapse_spread_score(curves, t_star_max=min(t_star_max, 1.0))
 
     if ax is None:
@@ -362,7 +363,7 @@ def plot_penetrating_collapse(manifest_paths, ax=None, length_scale: str = "H0",
     ax.set_xlim(0, t_star_max)
     ax.set_xlabel(rf"$t^*$ (length_scale={length_scale})")
     ax.set_ylabel(r"$\phi(t)/\phi(0)$")
-    ax.set_title(f"Penetrating-only collapse (L={length_scale}), score={score:.4f}")
+    ax.set_title(f"Pycnocline-reaching collapse (L={length_scale}), score={score:.4f}")
     ax.grid(True, alpha=0.3)
     # Manual legend by H0 color only (many overlapping runs otherwise).
     handles = [plt.Line2D([0], [0], color=cmap(i / max(len(H0_vals) - 1, 1)), label=f"H0={H0}")
@@ -376,13 +377,13 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sweep", type=str, nargs="+", help="Path(s) to floating_depth manifest.yaml")
     parser.add_argument("--longrun", type=str, help="Path to floating_depth_longrun manifest.yaml")
-    parser.add_argument("--penetration", type=str, nargs="+",
+    parser.add_argument("--reach", type=str, nargs="+",
                          help="Path(s) to sweep manifest.yaml(s) to combine for the "
-                              "penetration-margin diagnostic and/or phase-A collapse "
+                              "pycnocline-reach-margin diagnostic and/or phase-A collapse "
                               "exploration (e.g. --sweep + the two straddle sweeps)")
     parser.add_argument("--collapse", action="store_true",
-                         help="Run phase-A penetrating-only collapse exploration "
-                              "(requires --penetration)")
+                         help="Run phase-A pycnocline-reaching-only collapse exploration "
+                              "(requires --reach)")
     parser.add_argument("--x-frac", type=float, default=0.10)
     parser.add_argument("--plateau-frac", type=float, default=0.5)
     parser.add_argument("--length-scale", choices=["H0", "pycnocline", "d_struct"], default="H0")
@@ -433,13 +434,13 @@ def main():
         else:
             plt.show()
 
-    if args.penetration:
+    if args.reach:
         import matplotlib.pyplot as plt
 
-        ax4 = plot_tau_x_ratio_vs_penetration(args.penetration, x_frac=args.x_frac,
-                                               plateau_frac=args.plateau_frac)
+        ax4 = plot_tau_x_ratio_vs_reach(args.reach, x_frac=args.x_frac,
+                                         plateau_frac=args.plateau_frac)
         if args.save:
-            filename4 = "figures/floating_depth_penetration_margin.png"
+            filename4 = "figures/floating_depth_reach_margin.png"
             plt.savefig(filename4)
             print(f"Plot saved to {filename4}")
         else:
@@ -447,19 +448,19 @@ def main():
 
         if args.collapse:
             for ls in ["H0", "pycnocline", "d_struct"]:
-                ax5, score = plot_penetrating_collapse(args.penetration, length_scale=ls,
-                                                         x_frac=args.x_frac,
-                                                         plateau_frac=args.plateau_frac)
+                ax5, score = plot_reaching_collapse(args.reach, length_scale=ls,
+                                                     x_frac=args.x_frac,
+                                                     plateau_frac=args.plateau_frac)
                 print(f"length_scale={ls}: collapse_spread_score={score:.4f}")
                 if args.save:
-                    filename5 = f"figures/floating_depth_penetrating_collapse_{ls}.png"
+                    filename5 = f"figures/floating_depth_reaching_collapse_{ls}.png"
                     plt.savefig(filename5)
                     print(f"Plot saved to {filename5}")
                 else:
                     plt.show()
 
-    if not args.sweep and not args.longrun and not args.penetration:
-        parser.error("Provide --sweep, --longrun, and/or --penetration manifest.yaml")
+    if not args.sweep and not args.longrun and not args.reach:
+        parser.error("Provide --sweep, --longrun, and/or --reach manifest.yaml")
 
 
 if __name__ == "__main__":
