@@ -212,6 +212,58 @@ def resolve_velocity_profile(section: dict, z_r_u, z_r_v, repo_root=None):
     return u_target, v_target
 
 
+def load_scalar_profile(path: str):
+    """
+    Load a simple text scalar-profile file with columns:
+
+        depth  value
+
+    depth is in meters, positive downward from the surface. Lines starting
+    with '#' are comments and blank lines are ignored.
+
+    Returns
+    -------
+    depth, value : ndarray
+        1D arrays of equal length, sorted by increasing depth.
+    """
+    data = np.loadtxt(path, comments="#", ndmin=2)
+    if data.shape[1] != 2:
+        raise ValueError(
+            f"Scalar profile file {path!r} must have 2 columns (depth, value); "
+            f"found {data.shape[1]}."
+        )
+    depth, value = data[:, 0], data[:, 1]
+    order = np.argsort(depth)
+    return depth[order], value[order]
+
+
+def resolve_scalar_profile(profile_file: str, z_r, repo_root=None):
+    """
+    Resolve a depth-dependent scalar field onto z_r from a text profile
+    file (see load_scalar_profile), linearly interpolating (and
+    constant-extrapolating) by depth (distance below the surface, i.e. -z_r).
+
+    Parameters
+    ----------
+    profile_file : str
+        Path (possibly relative to repo_root) to a depth/value text file.
+    z_r : ndarray
+        Depth (z, negative down) array, e.g. from compute_z_r.
+    repo_root : str, optional
+        Directory that a relative profile_file is resolved against.
+
+    Returns
+    -------
+    value : ndarray
+        Same shape as z_r.
+    """
+    if not os.path.isabs(profile_file):
+        profile_file = os.path.join(repo_root or ".", profile_file)
+    depth, prof_value = load_scalar_profile(profile_file)
+    dist = -z_r
+    return np.interp(dist, depth, prof_value)
+
+
 def repo_root_from_cfg(cfg: dict) -> str:
     """
     Repo root directory (where configs/ and profile files live), derived

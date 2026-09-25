@@ -75,11 +75,15 @@ bodyforce:
 initial:
   ocean_time_seconds: 0.0   # time stamp for the IC file
 
-  # Temperature profile
+  # Temperature profile. temp_mode: "tanh" (default, params below) or
+  # "profile" (arbitrary depth-varying profile from a text file, columns
+  # "depth  temp", depth positive down -- set temp_profile_file instead).
+  temp_mode: tanh
   temp_T0: 20.0     # Surface temperatur
   temp_dT: 10.0    # temperature change across thermocline
   temp_zt: 40.0     # depth of thermocline center
   temp_ht: 10.0     # thickness of thermocline
+  temp_profile_file: null   # used only if temp_mode == "profile"
 
   # Salinity (constant)
   salt_S0: 35.0

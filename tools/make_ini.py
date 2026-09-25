@@ -17,7 +17,12 @@ import sys
 import numpy as np
 import netCDF4 as nc
 import yaml
-from utils.utils import compute_z_r, resolve_velocity_profile, repo_root_from_cfg
+from utils.utils import (
+    compute_z_r,
+    resolve_velocity_profile,
+    resolve_scalar_profile,
+    repo_root_from_cfg,
+)
 
 # ---------------------------------------------------------------------------
 # Initialization Functions
@@ -76,30 +81,45 @@ def v_initial(z_r_u, z_r_v, cfg):
 
 def temp_initial(z_r, cfg):
     """
-    Initial temperature profile using a hyperbolic tangent thermocline.
+    Initial temperature profile, resolved from cfg["initial"]["temp_mode"]:
 
-    The profile is parameterized by four values in cfg["initial"]:
-      - temp_T0 : surface temperature (°C)
-      - temp_dT : total temperature drop across the thermocline (°C)
-      - temp_zt : depth of the thermocline centre (m, positive down)
-      - temp_ht : half-thickness of the thermocline (m)
+      - "tanh" (default): hyperbolic tangent thermocline, parameterized by
+        four values in cfg["initial"]:
+          - temp_T0 : surface temperature (°C)
+          - temp_dT : total temperature drop across the thermocline (°C)
+          - temp_zt : depth of the thermocline centre (m, positive down)
+          - temp_ht : half-thickness of the thermocline (m)
 
-    The formula is:
-        T(z) = (T0 - dT) + (dT/2) * (1 + tanh((z + zt) / ht))
+        The formula is:
+            T(z) = (T0 - dT) + (dT/2) * (1 + tanh((z + zt) / ht))
 
-    This gives T0 near the surface, T0-dT below the thermocline, and a smooth
-    transition of width ~ht centred at depth zt.
+        This gives T0 near the surface, T0-dT below the thermocline, and a
+        smooth transition of width ~ht centred at depth zt.
+
+      - "profile": an arbitrary depth-varying profile read from a text file
+        (cfg["initial"]["temp_profile_file"], columns "depth  temp",
+        depth positive down), linearly interpolated (and
+        constant-extrapolated) onto z_r.
 
     To use a linear stratification instead:
         N2 = cfg["initial"]["N2"]   # buoyancy frequency squared [s^-2]
         alpha = ...                  # thermal expansion coefficient
         return T0 + (N2 / (g * alpha)) * z_r
     """
-    temp_T0 = cfg["initial"]["temp_T0"]
-    temp_dT = cfg["initial"]["temp_dT"]
-    temp_zt = cfg["initial"]["temp_zt"]
-    temp_ht = cfg["initial"]["temp_ht"]
-    return (temp_T0 - temp_dT) + (temp_dT / 2.0) * (1 + np.tanh((z_r + temp_zt) / temp_ht))
+    section = cfg.get("initial", {})
+    temp_mode = section.get("temp_mode", "tanh")
+    if temp_mode == "tanh":
+        temp_T0 = section["temp_T0"]
+        temp_dT = section["temp_dT"]
+        temp_zt = section["temp_zt"]
+        temp_ht = section["temp_ht"]
+        return (temp_T0 - temp_dT) + (temp_dT / 2.0) * (1 + np.tanh((z_r + temp_zt) / temp_ht))
+    elif temp_mode == "profile":
+        return resolve_scalar_profile(
+            section["temp_profile_file"], z_r, repo_root=repo_root_from_cfg(cfg)
+        )
+    else:
+        raise ValueError(f"Unknown temp_mode: {temp_mode!r}")
 
 
 def salt_initial(z_r, cfg):
