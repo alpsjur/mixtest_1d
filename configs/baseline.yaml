@@ -58,10 +58,18 @@ structure:
   c4: 0.44           # strong mixing
 
 bodyforce:
-  BFRC_U: 3.15        # e-7 m/s2, x-direction, corresponds to 0.1 m/s velocity in steady state
-  BFRC_V: 0.0         # e-7 m/s2, y-direction 
+  mode: uniform       # "uniform" (U0/V0 everywhere) or "profile" (depth-varying, from profile_file)
+  U0: 0.1             # m/s, target steady-state velocity, x-direction (uniform mode)
+  V0: 0.0             # m/s, target steady-state velocity, y-direction (uniform mode)
+  profile_file: null  # path (repo-root-relative) to a depth,u[,v] text file (profile mode)
   BFRC_TSTR: 0.0      # days, ramp start
   BFRC_TEND: 0.0      # days, ramp end
+  # Linear (Rayleigh) damping rate (1/s) that balances the prescribed
+  # force in steady state (bfrc = BFRC_CD * u_target). Independent of
+  # structure.CD (STRUCTURE_MIXING quadratic drag). Since this term is
+  # explicit, it must satisfy BFRC_CD * DT << 1 for stability
+  # (DT=40s here, so keep BFRC_CD well below ~0.02).
+  BFRC_CD: 0.005
 
 
 initial:
@@ -76,5 +84,12 @@ initial:
   # Salinity (constant)
   salt_S0: 35.0
 
-  # velocity
-  ubar0: 0.1      # start from steady state
+  # Initial velocity (u_3d/v_3d; ubar/vbar are derived as the vertical
+  # mean). Independent of the UV_BODYFORCE target (bodyforce section
+  # above) -- default here is "start from rest". To start already at
+  # the body-force target/profile, mirror the bodyforce section (e.g.
+  # same mode/U0/V0/profile_file).
+  mode: uniform
+  U0: 0.0
+  V0: 0.0
+  profile_file: null

@@ -132,6 +132,95 @@ def compute_z_w(h, hc, theta_s, theta_b, N):
 
 
 
+def load_velocity_profile(path: str):
+    """
+    Load a simple text velocity-profile file with columns:
+
+        depth  u  [v]
+
+    depth is in meters, positive downward from the surface; u/v are in
+    m/s. The v column is optional (defaults to 0 everywhere if absent).
+    Lines starting with '#' are comments and blank lines are ignored.
+
+    Returns
+    -------
+    depth, u, v : ndarray
+        1D arrays of equal length, sorted by increasing depth.
+    """
+    data = np.loadtxt(path, comments="#", ndmin=2)
+    if data.shape[1] == 2:
+        depth, u = data[:, 0], data[:, 1]
+        v = np.zeros_like(u)
+    elif data.shape[1] == 3:
+        depth, u, v = data[:, 0], data[:, 1], data[:, 2]
+    else:
+        raise ValueError(
+            f"Velocity profile file {path!r} must have 2 or 3 columns "
+            f"(depth, u, [v]); found {data.shape[1]}."
+        )
+    order = np.argsort(depth)
+    return depth[order], u[order], v[order]
+
+
+def resolve_velocity_profile(section: dict, z_r_u, z_r_v, repo_root=None):
+    """
+    Resolve a target velocity field (u_target, v_target) from a velocity
+    config section (e.g. cfg["bodyforce"] or cfg["initial"]), onto the
+    given depth arrays.
+
+    section["mode"] selects between:
+      - "uniform": a single (U0, V0) pair applied at every depth.
+      - "profile": a text file (section["profile_file"], a path relative
+        to repo_root) with depth-dependent u(, v), linearly interpolated
+        (and constant-extrapolated) onto z_r_u/z_r_v.
+
+    Parameters
+    ----------
+    section : dict
+        A velocity config section with keys "mode" and either
+        "U0"/"V0" (mode "uniform") or "profile_file" (mode "profile").
+    z_r_u, z_r_v : ndarray
+        Depth (z, negative down) arrays at U- and V-points, e.g. from
+        compute_z_r, with any shape (only used via -z_r as "distance from
+        surface" for the "profile" mode).
+    repo_root : str, optional
+        Directory that relative profile_file paths are resolved against.
+        Required (and only used) for mode "profile".
+
+    Returns
+    -------
+    u_target, v_target : ndarray
+        Same shapes as z_r_u, z_r_v.
+    """
+    mode = section.get("mode", "uniform")
+    if mode == "uniform":
+        U0 = float(section.get("U0", 0.0))
+        V0 = float(section.get("V0", 0.0))
+        u_target = np.full_like(z_r_u, U0, dtype=np.float64)
+        v_target = np.full_like(z_r_v, V0, dtype=np.float64)
+    elif mode == "profile":
+        profile_file = section["profile_file"]
+        if not os.path.isabs(profile_file):
+            profile_file = os.path.join(repo_root or ".", profile_file)
+        depth, prof_u, prof_v = load_velocity_profile(profile_file)
+        dist_u = -z_r_u
+        dist_v = -z_r_v
+        u_target = np.interp(dist_u, depth, prof_u)
+        v_target = np.interp(dist_v, depth, prof_v)
+    else:
+        raise ValueError(f"Unknown velocity mode: {mode!r}")
+    return u_target, v_target
+
+
+def repo_root_from_cfg(cfg: dict) -> str:
+    """
+    Repo root directory (where configs/ and profile files live), derived
+    from cfg["ROMS"]["yaml_loc"] (which points at <ROOT_DIR>/roms-related).
+    """
+    yaml_loc = cfg.get("ROMS", {}).get("yaml_loc")
+    return os.path.dirname(yaml_loc) if yaml_loc else "."
+
+
 def load_yaml(path: str) -> dict:
     """Load a YAML file and return its contents as a dict."""
     with open(path, "r") as f:

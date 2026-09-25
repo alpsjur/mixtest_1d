@@ -23,7 +23,7 @@ def run_test(make_plots: bool = True) -> bool:
     NTIMES = params["time_stepping"]["NTIMES"]
     DT = params["time_stepping"]["DT"]
     NHIS = params["time_stepping"]["NHIS"]
-    F = params["bodyforce"]["BFRC_U"] * 1e-7
+    F = params["bodyforce"]["F_U"]
 
     dt = DT * NHIS
     T = NTIMES * DT

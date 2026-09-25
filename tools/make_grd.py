@@ -24,7 +24,7 @@ ROOT_DIR = os.path.abspath(os.path.join(THIS_DIR, ".."))
 if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
-from utils.utils import compute_z_r
+from utils.utils import compute_z_r, resolve_velocity_profile, repo_root_from_cfg
 
 
 
@@ -57,8 +57,56 @@ def build_str_a(z_r, str_a_value, depth_zero_below, eta_limits=None, xi_limits=N
     return str_a
 
 
+def build_bfrc(z_r, cfg, bfrc_cd):
+    """
+    Build the UV_BODYFORCE acceleration fields bfrc_u/bfrc_v at U/V-points
+    (m/s2).
+
+    cfg["bodyforce"]["mode"] selects between:
+      - "uniform"/"profile": derive bfrc from the target steady-state
+        velocity profile resolved via resolve_velocity_profile, using
+        the linear-damping relation bfrc = u_target * bfrc_cd (see
+        notes on UV_BODYFORCE damping in rhs3d.F).
+      - "force": bypass the velocity-target relation and apply a
+        prescribed uniform acceleration directly (cfg["bodyforce"]
+        ["F_U"]/["F_V"], m/s2) -- useful for tests that want to probe
+        the quadratic STRUCTURE_MIXING drag response in isolation
+        (typically paired with BFRC_CD=0 so the linear damping term
+        vanishes).
+
+    Parameters
+    ----------
+    z_r (np.ndarray): Vertical coordinate array at RHO-points, shape
+        (N, eta_rho, xi_rho).
+    cfg (dict): resolved config dict.
+    bfrc_cd (float): UV_BODYFORCE linear damping rate (1/s,
+        cfg["bodyforce"]["BFRC_CD"]), independent of the structure drag
+        coefficient (structure.CD).
+
+    Returns
+    -------
+    bfrc_u, bfrc_v : np.ndarray
+        Shapes (N, eta_u, xi_u) and (N, eta_v, xi_v) respectively.
+    """
+    z_r_u = 0.5 * (z_r[:, :, :-1] + z_r[:, :, 1:])   # (N, eta_u, xi_u)
+    z_r_v = 0.5 * (z_r[:, :-1, :] + z_r[:, 1:, :])    # (N, eta_v, xi_v)
+    if cfg["bodyforce"].get("mode") == "force":
+        F_U = float(cfg["bodyforce"].get("F_U", 0.0))
+        F_V = float(cfg["bodyforce"].get("F_V", 0.0))
+        bfrc_u = np.full_like(z_r_u, F_U, dtype=np.float64)
+        bfrc_v = np.full_like(z_r_v, F_V, dtype=np.float64)
+        return bfrc_u, bfrc_v
+    u_target, v_target = resolve_velocity_profile(
+        cfg["bodyforce"], z_r_u, z_r_v, repo_root=repo_root_from_cfg(cfg)
+    )
+    bfrc_u = bfrc_cd * u_target
+    bfrc_v = bfrc_cd * v_target
+    return bfrc_u, bfrc_v
+
+
 def write_grid(output, Lm, Mm, N, Vtransform, Vstretching, THETA_S, THETA_B, HC,
-               H0, DX, DY, F0, str_a_value, depth_zero_below, eta_limits=None, xi_limits=None):
+               H0, DX, DY, F0, str_a_value, depth_zero_below, bfrc_cd, cfg,
+               eta_limits=None, xi_limits=None):
     """
     Create a ROMS-compatible grid NetCDF at 'output'.
     """
@@ -107,6 +155,9 @@ def write_grid(output, Lm, Mm, N, Vtransform, Vstretching, THETA_S, THETA_B, HC,
 
     # Build str_a
     str_a = build_str_a(z_r, str_a_value, depth_zero_below, eta_limits, xi_limits)
+
+    # Build UV_BODYFORCE acceleration fields (bfrc_u/bfrc_v)
+    bfrc_u, bfrc_v = build_bfrc(z_r, cfg, bfrc_cd)
 
     # Write NetCDF
     with nc.Dataset(output, "w", format="NETCDF4") as ds:
@@ -165,6 +216,16 @@ def write_grid(output, Lm, Mm, N, Vtransform, Vstretching, THETA_S, THETA_B, HC,
         v.valid_min = np.float64(0.0)
         v[:]        = str_a
 
+        v = ds.createVariable("bfrc_u", "f8", ("s_rho", "eta_u", "xi_u"), fill_value=9.99e36)
+        v.long_name = "UV_BODYFORCE body-force acceleration, x-direction"
+        v.units     = "meter second-2"
+        v[:]        = bfrc_u
+
+        v = ds.createVariable("bfrc_v", "f8", ("s_rho", "eta_v", "xi_v"), fill_value=9.99e36)
+        v.long_name = "UV_BODYFORCE body-force acceleration, y-direction"
+        v.units     = "meter second-2"
+        v[:]        = bfrc_v
+
     #print(f"Grid file written: {output}")
 
 
@@ -193,6 +254,7 @@ def make_grid_from_config(cfg: dict) -> str:
 
     str_a_value      = float(cfg["structure"]["str_a"])
     depth_zero_below = float(cfg["structure"]["depth_zero_below"])
+    bfrc_cd          = float(cfg["bodyforce"]["BFRC_CD"])
 
     # Get eta and xi limits from configuration
     eta_limits = cfg["structure"].get("eta_limits", None)
@@ -206,6 +268,8 @@ def make_grid_from_config(cfg: dict) -> str:
         H0=H0, DX=DX, DY=DY, F0=F0,
         str_a_value=str_a_value,
         depth_zero_below=depth_zero_below,
+        bfrc_cd=bfrc_cd,
+        cfg=cfg,
         eta_limits=eta_limits,
         xi_limits=xi_limits,
     )

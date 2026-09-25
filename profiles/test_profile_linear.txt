@@ -1,0 +1,8 @@
+# Simple linear velocity-shear profile for test_UV_BODYFORCE_PROFILE.
+# Columns: depth (m, positive down from the surface)   u (m/s)   [v (m/s)]
+# Linearly interpolated (and constant-extrapolated) onto the model's
+# vertical grid by utils.utils.resolve_velocity_profile.
+#
+# depth   u
+0.0       0.02
+150.0     0.20

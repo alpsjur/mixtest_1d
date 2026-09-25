@@ -1,9 +1,8 @@
-# This is a test configuration file for the ROMS model, 
-# specifically for testing the UV_BODYFORCE option. 
+# This is a test configuration file for the ROMS model,
+# specifically for testing the UV_BODYFORCE option.
 # Running this should result in a uniform flow in the
-#  x-direction, with a velocity increasing linearly 
-# in time, reaching 0.1 m/s after 1 day 
-# of simulation time.
+# x-direction, approaching a steady-state velocity of
+# U0 = 0.1 m/s exponentially (rate BFRC_CD) over time.
 
 run:
   name: test_UV_BODYFORCE
@@ -12,10 +11,9 @@ structure:
   str_a: 0.0
 
 bodyforce:
-  BFRC_U: 11.57
+  mode: uniform
+  U0: 0.1
+  V0: 0.0
 
 time_stepping:
-  NTIMES: 2160 
-
-initial:
-  ubar0: 0      # start from rest
+  NTIMES: 2160

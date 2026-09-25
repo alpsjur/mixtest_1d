@@ -1,0 +1,18 @@
+# Test configuration for the UV_BODYFORCE velocity-shear (depth-varying
+# target velocity) feature. Running this should result in a flow whose
+# u-velocity at each depth approaches a *different* steady-state target
+# U0(z) (linearly increasing with depth, per profiles/test_profile_linear.txt),
+# each following u(z,t) = U0(z) * (1 - exp(-str_cd * t)), starting from rest.
+
+run:
+  name: test_UV_BODYFORCE_PROFILE
+
+structure:
+  str_a: 0.0
+
+bodyforce:
+  mode: profile
+  profile_file: profiles/test_profile_linear.txt
+
+time_stepping:
+  NTIMES: 2160

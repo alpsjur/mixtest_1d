@@ -17,7 +17,7 @@ import sys
 import numpy as np
 import netCDF4 as nc
 import yaml
-from utils.utils import compute_z_r
+from utils.utils import compute_z_r, resolve_velocity_profile, repo_root_from_cfg
 
 # ---------------------------------------------------------------------------
 # Initialization Functions
@@ -33,45 +33,46 @@ def zeta_initial(x_rho, y_rho, cfg):
     """
     return np.zeros_like(x_rho, dtype=np.float64)
 
-def ubar_initial(eta_u, xi_u, cfg):
+def ubar_initial(u_3d, cfg):
     """
-    Initial depth-averaged u-velocity (ubar). Currently zero (no background flow).
-
-    To add a uniform barotropic current, use:
-        return np.full((eta_u, xi_u), cfg["initial"]["ubar0"], dtype=np.float64)
+    Initial depth-averaged u-velocity (ubar): the simple (unweighted)
+    vertical mean of the 3D initial u field, so it stays consistent with
+    whatever target velocity profile is used for u_initial (uniform or
+    depth-varying), without needing a separate config value.
     """
-    ubar0 = cfg["initial"].get("ubar0", 0.0)  # default to 0.0 if not specified 
-    return np.full((eta_u, xi_u), ubar0, dtype=np.float64)
+    return np.mean(u_3d, axis=0)
 
 
-def vbar_initial(eta_v, xi_v, cfg):
+def vbar_initial(v_3d, cfg):
     """
-    Initial depth-averaged v-velocity (vbar). Currently zero (no background flow).
-
-    To add a uniform barotropic current, use:
-        return np.full((eta_v, xi_v), cfg["initial"]["vbar0"], dtype=np.float64)
+    Initial depth-averaged v-velocity (vbar), see ubar_initial.
     """
-    return np.zeros((eta_v, xi_v), dtype=np.float64)
+    return np.mean(v_3d, axis=0)
 
 
-def u_initial(N, eta_u, xi_u, cfg):
+def u_initial(z_r_u, z_r_v, cfg):
     """
-    Initial 3D u-velocity field. Currently zero (no background shear).
-
-    To add a depth-varying shear profile, use:
-        u_shear = cfg["initial"]["u_shear"]   # e.g. shear rate [1/s]
-        return u_shear * z_r_u  # z_r_u must be passed in if depth-dependent
+    Initial 3D u-velocity field, resolved from cfg["initial"] (mode
+    "uniform" -> U0/V0, mode "profile" -> profile_file), independently of
+    the UV_BODYFORCE target (cfg["bodyforce"]) -- e.g. so a test can start
+    from rest (default: mode uniform, U0=V0=0) while the body force still
+    drives the flow towards a nonzero target. To start already at the
+    body-force target/profile, set cfg["initial"] equal to cfg["bodyforce"]
+    (or point both profile_file entries at the same file).
     """
-    return np.zeros((N, eta_u, xi_u), dtype=np.float64)
+    section = cfg.get("initial", {})
+    u_target, _ = resolve_velocity_profile(section, z_r_u, z_r_v, repo_root=repo_root_from_cfg(cfg))
+    return u_target
 
 
-def v_initial(N, eta_v, xi_v, cfg):
+def v_initial(z_r_u, z_r_v, cfg):
     """
-    Initial 3D v-velocity field. Currently zero (no background shear).
-
-    To add a depth-varying shear profile, see u_initial for the approach.
+    Initial 3D v-velocity field, see u_initial.
     """
-    return np.zeros((N, eta_v, xi_v), dtype=np.float64)
+    section = cfg.get("initial", {})
+    _, v_target = resolve_velocity_profile(section, z_r_u, z_r_v, repo_root=repo_root_from_cfg(cfg))
+    return v_target
+
 
 def temp_initial(z_r, cfg):
     """
@@ -166,10 +167,10 @@ def make_ini_from_config(cfg: dict) -> str:
 
     # Allocate initial fields using parameterized functions
     zeta = zeta_initial(x_rho, y_rho, cfg)
-    ubar = ubar_initial(eta_u, xi_u, cfg)
-    vbar = vbar_initial(eta_v, xi_v, cfg)
-    u_3d = u_initial(N, eta_u, xi_u, cfg)
-    v_3d = v_initial(N, eta_v, xi_v, cfg)
+    u_3d = u_initial(z_r_u, z_r_v, cfg)
+    v_3d = v_initial(z_r_u, z_r_v, cfg)
+    ubar = ubar_initial(u_3d, cfg)
+    vbar = vbar_initial(v_3d, cfg)
     temp = temp_initial(z_r, cfg)
     salt = salt_initial(z_r, cfg)
 

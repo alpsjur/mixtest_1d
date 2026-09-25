@@ -412,15 +412,18 @@ parametrization
  Vstretching == {{ vertical.Vstretching }}                          ! stretching function
 
 
-! Uniform body force (acceleration) parameters. Used when CPP option
-! UV_BODYFORCE is activated. The force ramps linearly from zero to full
-! strength between BFRC_TSTR and BFRC_TEND (days). If BFRC_TEND <=
-! BFRC_TSTR the full force is applied immediately with no ramp.
+! Body force (acceleration) ramp and damping parameters. Used when CPP
+! option UV_BODYFORCE is activated. The prescribed force (bfrc_u/bfrc_v,
+! read from the grid NetCDF file; possibly depth-varying) ramps linearly
+! from zero to full strength between BFRC_TSTR and BFRC_TEND (days). If
+! BFRC_TEND <= BFRC_TSTR the full force is applied immediately with no
+! ramp. BFRC_CD (1/s) is the linear (Rayleigh) damping rate balancing
+! the prescribed force in steady state; it is independent of STR_CD
+! above and must satisfy BFRC_CD*DT << 1 for numerical stability.
 
-      BFRC_U == {{ bodyforce.BFRC_U }}d-7                     ! m/s2, x-direction
-      BFRC_V == {{ bodyforce.BFRC_V }}d-7                     ! m/s2, y-direction
     BFRC_TSTR == {{ bodyforce.BFRC_TSTR }}d0                    ! days, ramp start
     BFRC_TEND == {{ bodyforce.BFRC_TEND }}d0                    ! days, ramp end
+     BFRC_CD == {{ bodyforce.BFRC_CD }}d0                       ! 1/s, linear damping rate
 
 ! Vertical S-coordinates parameters (see below for details), [1:Ngrids].
 
