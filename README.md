@@ -2,13 +2,13 @@
 
 **Idealized 1D ROMS application for testing turbulence closure / mixing schemes.**
 
-The project provides a fully scripted workflow for running the [ROMS](https://www.myroms.org/) ocean model in a single-column (1D) setup: building input files, running simulations, sweeping over parameter combinations, and analysing/plotting results.
+The project provides a scripted workflow for running the [ROMS](https://www.myroms.org/) ocean model in a single-column (1D) setup: building input files, running simulations, sweeping over parameter combinations, and analysing/plotting results. 
 
 ---
 
 ## Overview
 
-The physical setup is a single-column ocean (uniform depth, periodic horizontal boundaries) forced by a body force in the x-direction. The goal is to isolate and test turbulence closures, particularly the GLS (Generic Length Scale) scheme, as well as a novel **structure drag / mixing** parameterization that represents the effect of subgrid-scale structures (e.g. wind turbine foundations) on flow and turbulence.
+The physical setup is a single-column ocean (uniform depth, periodic horizontal boundaries) forced by a body force. The goal is to isolate and test turbulence closures, particularly the GLS (Generic Length Scale) scheme, as well as a novel **structure drag / mixing** parameterization that represents the effect of subgrid-scale structures (e.g. wind turbine foundations) on flow and turbulence.
 
 ### Key concepts
 
@@ -51,7 +51,7 @@ mixtest_1d/
 │   └── test_STRUCTURE_PRODUCTION.py  # Validates TKE production by structures
 ├── utils/
 │   └── utils.py               # Shared utilities (YAML I/O, ROMS metrics, dataset loader)
-├── roms-related/                      # ROMS executable and supporting files (do not modify)
+├── roms-related/              # ROMS executable and supporting files
 └── environment.yml            # Conda environment specification
 ```
 
@@ -69,7 +69,11 @@ conda activate mixtest_1d   # or whatever name is in the yml
 ### 2. ROMS executable
 
 The compiled ROMS executable is expected at `roms-related/romsS`.  
-If you need to (re-)compile ROMS, see `roms-related/build_roms.sh`.
+If you need to (re-)compile ROMS, run `roms-related/build_roms.sh`.
+Note that ROMS with STRUCTURE_MIXING implemented must be installed,
+[link here](https://github.com/alpsjur/roms).
+Use the `velocity-shear-bodyforce` branch, whic has been developed 
+spesifically for this idealized setup. 
 
 ---
 
@@ -170,8 +174,8 @@ variant.yaml  ─┴─► prep_experiment.py ──► make_grd.py  → grid Ne
 resolved_config.yaml ──► run_experiment.py ──► roms-related/romsS → history NetCDF
 
 history NetCDF + resolved_config.yaml ──► open_roms_dataset()
-                                       ──► prep_timeseries / prep_profiles
-                                       ──► plot_sweep / wrapper.py
+                                      ──► prep_timeseries / prep_profiles
+                                      ──► plot_sweep / wrapper.py
 ```
 
 `utils/utils.py` is the shared foundation used by all scripts:
@@ -189,5 +193,6 @@ Each test verifies one physical mechanism against an analytical solution:
 | Test | Physics | Pass criterion |
 |---|---|---|
 | `test_UV_BODYFORCE` | Uniform body force → linear acceleration u(t) = F·t | All grid points match u_analytical with rtol=1e-5 |
-| `test_STRUCTURE_DRAG` | Body force balanced by structure drag → u(t) = √(F/α)·tanh(t√(Fα)) | All grid points match u_analytical with rtol=1e-4 |
+| `test_UV_BODYFORCE_PROFILE` | Body force profile with dampening → u(t, z) | All grid points match u_analytical with rtol=2e-2 (reduced tolerance due to mixing-reduced shear) |
+| `test_STRUCTURE_DRAG` | Uniform body force balanced by structure drag → u(t) = √(F/α)·tanh(t√(Fα)) | All grid points match u_analytical with rtol=1e-4 |
 | `test_STRUCTURE_PRODUCTION` | Structure TKE production balances dissipation in steady state | Domain-integrated ε matches Pd within 2% |
