@@ -173,7 +173,7 @@ else
   export      MY_ROOT_DIR=${HOME}/ocean/repository/git
 fi
 
-export     MY_PROJECT_DIR=${PWD}/roms-related
+export     MY_PROJECT_DIR=${PWD}/roms
 
 # The path to the user's local current ROMS source code.
 #
