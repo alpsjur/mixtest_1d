@@ -45,7 +45,7 @@ def run_test(make_plots: bool = True) -> bool:
 
     u_simulation = ds.u.values  # (time, s_rho, eta_rho, xi_u)
 
-    # Tolerance is looser here than in test_UV_BODYFORCE.py (uniform case):
+    # Tolerance is loos:
     # with a depth-varying target, vertical (GLS) mixing continuously
     # smooths the prescribed shear, so the achieved profile approaches
     # -- but does not exactly equal -- the per-level target, especially

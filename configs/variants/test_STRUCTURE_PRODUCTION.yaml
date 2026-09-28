@@ -10,7 +10,7 @@ structure:
   c4 : 0.6       # strong mixing
 
 time_stepping:
-  NTIMES: 60480   # want to reach steady state, so run for a month
+  NTIMES: 15120   # want to reach steady state, so run for 1 week
 
 initial:
   temp_dT: 0.0    # no shear

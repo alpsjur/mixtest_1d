@@ -1,8 +1,11 @@
-# This is a test configuration file for the ROMS model,
-# specifically for testing the UV_BODYFORCE option.
+# This is a test configuration file for the ROMS model, 
+# specifically for testing the UV_BODYFORCE option in 
+# force mode. This option is later used in 
+# test_STRUCTURE_DRAG.py
 # Running this should result in a uniform flow in the
-# x-direction, approaching a steady-state velocity of
-# U0 = 0.1 m/s exponentially (rate BFRC_CD) over time.
+# x-direction, with a velocity increasing linearly 
+# in time, reaching 0.1 m/s after 1 day 
+# of simulation time.
 
 run:
   name: test_UV_BODYFORCE
@@ -11,9 +14,10 @@ structure:
   str_a: 0.0
 
 bodyforce:
-  mode: uniform
-  U0: 0.1
-  V0: 0.0
+  mode: force
+  F_U: 11.57e-7
+  F_V: 0.0
+  BFRC_CD: 0.0
 
 time_stepping:
   NTIMES: 2160

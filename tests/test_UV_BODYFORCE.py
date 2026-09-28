@@ -10,13 +10,8 @@ if ROOT_DIR not in sys.path:
 from utils.utils import open_roms_dataset
 
 
-def analytical_u(U0, bfrc_cd, t):
-    """
-    Exact solution of du/dt = bfrc_cd*(U0 - u), i.e. UV_BODYFORCE
-    (bfrc_u = bfrc_cd*U0) balanced against linear damping (-bfrc_cd*u),
-    starting from rest (u(0)=0), with no ramp (BFRC_TSTR=BFRC_TEND=0).
-    """
-    return U0 * (1.0 - np.exp(-bfrc_cd * t))
+def analytical_u(F, t):
+    return F * t
 
 
 def run_test(make_plots: bool = True) -> bool:
@@ -27,13 +22,12 @@ def run_test(make_plots: bool = True) -> bool:
     NTIMES = params["time_stepping"]["NTIMES"]
     DT = params["time_stepping"]["DT"]
     NHIS = params["time_stepping"]["NHIS"]
-    U0 = params["bodyforce"]["U0"]
-    bfrc_cd = params["bodyforce"]["BFRC_CD"]
+    F = params["bodyforce"]["F_U"]
 
     dt = DT * NHIS
     T = NTIMES * DT
     t = np.arange(0, T + dt / 2, dt)
-    u_analytical = analytical_u(U0, bfrc_cd, t)
+    u_analytical = analytical_u(F, t)
 
     u_simulation = ds.u.values
 
@@ -86,7 +80,7 @@ def run_test(make_plots: bool = True) -> bool:
 
         # add analytical expression for u in the plot
         ax.text(
-            0.5, 0.1, r'$u(t) = U_0 (1 - e^{-c_d t})$',
+            0.5, 0.1, r'$u(t) = F t$',
             transform=ax.transAxes, fontsize=12, verticalalignment='bottom',
             horizontalalignment='center'
         )
