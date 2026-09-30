@@ -498,6 +498,59 @@ def compute_phi(ds, grid, params):
     return phi, rho_mix0
 
 
+def compute_epsilon(ds, params):
+    """
+    TKE dissipation rate epsilon(z,t), derived from the two GLS prognostic
+    fields ROMS actually outputs -- tke (=k) and gls (=the generic variable
+    psi) -- via the standard generic-length-scale relation (Umlauf &
+    Burchard 2003; Warner et al. 2005, Table 1/Eq. 12):
+
+        psi = CMU0^P * k^M * l^N
+        epsilon = CMU0^3 * k^(3/2) / l
+
+    Eliminating the turbulent length scale l gives a single closure-agnostic
+    formula in terms of the two prognostic fields:
+
+        epsilon = CMU0^(3 + P/N) * k^(3/2 + M/N) * psi^(-1/N)
+
+    which holds for *any* (P, M, N) choice, i.e. any GLS closure variant.
+    Sanity checks (all with the exponents from `configs/variants/*.yaml`):
+      - k-epsilon (P=3, M=1.5, N=-1): collapses to epsilon = psi exactly,
+        i.e. ROMS' "gls" field *is* epsilon for this closure.
+      - gen (P=2, M=1, N=-2/3): collapses to epsilon = psi^(3/2).
+      - k-omega (P=-1, M=0.5, N=-1): gives epsilon = CMU0^4 * k * psi,
+        consistent with the standard epsilon = Cmu*k*omega relation
+        (CMU0^4 ~= 0.090 ~= the usual Cmu=0.09, once psi is identified
+        with omega).
+
+    Parameters
+    ----------
+    ds : xarray.Dataset
+        Prepared history dataset with 'tke' and 'gls' fields (see
+        open_roms_dataset/prep_ds).
+    params : dict
+        Resolved run config (used for GLS.CMU0/P/M/N).
+
+    Returns
+    -------
+    epsilon : xarray.DataArray
+        epsilon(z,t), same dims as ds['tke'], units m2 s-3.
+    """
+    CMU0 = float(params["GLS"]["CMU0"])
+    P = float(params["GLS"]["P"])
+    M = float(params["GLS"]["M"])
+    N = float(params["GLS"]["N"])
+
+    k = ds["tke"]
+    psi = ds["gls"]
+
+    epsilon = CMU0 ** (3.0 + P / N) * k ** (1.5 + M / N) * psi ** (-1.0 / N)
+    epsilon.name = "epsilon"
+    epsilon.attrs["long_name"] = "TKE dissipation rate (derived from tke, gls)"
+    epsilon.attrs["units"] = "m2 s-3"
+    return epsilon
+
+
 def compute_Pd(ds, grid, params):
     """
     Structure-drag turbulence production rate P_d(z,t), following the
