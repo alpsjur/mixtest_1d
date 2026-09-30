@@ -1,0 +1,35 @@
+sweep:
+  id: gen closure GLS_Kmin x GLS_Pmin sensitivity
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Exploring whether the GLS minimum-value floors for turbulent kinetic
+  # energy (GLS_Kmin) and dissipation (GLS_Pmin) affect the time evolution
+  # of structure-induced mixing, for the GEN closure only (see
+  # notes/mixing_timescale_analysis.md / notes/c2_c4_closure_dependence.md
+  # for the c4/C2 dependence at fixed Kmin/Pmin). structure.c4 and GLS.C2
+  # are held at baseline.yaml's gen-closure literature defaults (c4=0.44,
+  # C2=1.22); structure.CD/initial.temp_dT/grid.H0 are held at
+  # mixing_timescale.yaml's values, so tau_mix_theory (power-balance only,
+  # independent of GLS coefficients) is identical across every run.
+  #
+  # configs/baseline.yaml already sets Kmin=1.0/Pmin=1.0, which the .in
+  # template renders as "{{ GLS.Kmin }}d-8" / "{{ GLS.Pmin }}d-8" -- i.e.
+  # GLS_Kmin=1.0d-8, GLS_Pmin=1.0d-8.  The grid below (mantissas
+  # 0.01-100, all multiplying the template's fixed "d-8" exponent) spans
+  # +/-2 decades either side of that default, covering the full range of
+  # literature GLS_Kmin/GLS_Pmin values used across the k-kl/k-omega/
+  # k-epsilon/gen closures (1.0d-8 to 7.6d-6 for Kmin; 1.0d-12 to 1.0d-6 for
+  # Pmin).
+  parameters:
+    GLS.Kmin: [0.01, 0.1, 1.0, 10.0, 100.0]   # -> 1.0d-10 ... 1.0d-6
+    GLS.Pmin: [0.01, 0.1, 1.0, 10.0, 100.0]   # -> 1.0d-10 ... 1.0d-6
+
+  run_name_template: "gen_kminpmin_Kmin{GLS.Kmin}_Pmin{GLS.Pmin}"
+
+  output_dir: "sweeps/gen_kminpmin"
+
+  # tau_mix_theory does not depend on GLS.Kmin/Pmin (power-balance only),
+  # so every run gets the same NTIMES; any difference in the empirical
+  # t*_mix is attributable entirely to the Kmin/Pmin floors.
+  ntimes_margin: 4.0

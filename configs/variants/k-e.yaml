@@ -5,6 +5,7 @@ GLS:        # k-epsilon closure
   P: 3.0
   M: 1.5
   N: -1.0
+  CMU0: 0.5477
   C1: 1.44
   C2: 1.92
   C3M: -0.63
