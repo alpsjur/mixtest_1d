@@ -1,0 +1,38 @@
+sweep:
+  id: gen closure c2 x c4 sensitivity (GLS.C2 vs structure.c4)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Exploring the role of the GLS "c2" (dissipation/destruction coefficient
+  # in the psi equation, C_psi2) alongside "c4" (structure-production
+  # coefficient, C_psi4) in setting the mixing evolution, for the GEN
+  # closure (baseline.yaml GLS block: C1=1.0, so structure.c4 must stay in
+  # (0, 1.0], see notes/mixing_timescale_analysis.md section 4.3).
+  #
+  # GLS.C2 grid = {0.52, 0.833, 1.22, 1.6, 1.92}: the first three values are
+  # the literature C2 for the k-kl, k-omega, and gen closures respectively
+  # (see roms_basin.in "Suggested values" table); 1.92 is k-epsilon's C2;
+  # 1.6 fills the gap between gen and k-epsilon. The same grid is reused
+  # in templates/k-omega_c2c4_sweep.yaml so the two closures' C2-sensitivity
+  # can be compared directly, holding structure.CD/temp_dT/grid.H0 fixed
+  # (inherited unchanged from mixing_timescale.yaml/baseline.yaml).
+  #
+  # structure.c4 grid is expressed as 5 fractions of this closure's GLS.C1
+  # (0.1, 0.3, 0.55, 0.8, 1.0 -- 1.0 = the "neutral point" C1==c4). The
+  # k-omega sweep uses the same fractions x its own (smaller) C1, so t*_mix
+  # can be compared closure-to-closure via c4/C1 rather than raw c4.
+  parameters:
+    structure.c4: [0.1, 0.3, 0.55, 0.8, 1.0]     # fractions of GLS.C1=1.0
+    GLS.C2: [0.52, 0.833, 1.22, 1.6, 1.92]
+
+  run_name_template: "gen_c2c4_c2{GLS.C2}_c4{structure.c4}"
+
+  output_dir: "sweeps/gen_c2c4"
+
+  # NTIMES derived per-run from analytic_mixing_timescale(), which does NOT
+  # depend on GLS.C1/C2/c4 (power-balance only) -- so every run in this
+  # sweep gets the same NTIMES. Margin raised to 4.0 (vs 2.5-3.0 in earlier
+  # c4-only sweeps) because varying C2 as well as c4 is expected to slow
+  # mixing further at high C2 / c4 near C1, and we want phi_star to reach
+  # its 5% threshold in as many combinations as possible.
+  ntimes_margin: 4.0

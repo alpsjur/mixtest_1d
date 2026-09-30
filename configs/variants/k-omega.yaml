@@ -1,0 +1,21 @@
+run:
+  name: k-omega
+
+GLS:        # k-omega closure (Warner et al. 2005, Table 1; Umlauf & Burchard 2003)
+  P: -1.0
+  M: 0.5
+  N: -1.0
+  # Kmin/Pmin intentionally not overridden here: the .in template renders
+  # them as "{{ GLS.Kmin }}d-8"/"{{ GLS.Pmin }}d-8" (a fixed 1e-8 exponent,
+  # see templates/mixtest_1d.in.j2), so a literal "7.6e-6" mantissa here
+  # would render as the malformed literal "7.6e-06d-8" and crash ROMS's
+  # namelist parser. Following configs/variants/k-e.yaml's precedent, we
+  # keep baseline.yaml's generic Kmin=1.0/Pmin=1.0 (-> 1.0d-8/1.0d-8)
+  # instead of the literature k-omega values (7.6d-6/1.0d-12).
+  CMU0: 0.5477
+  C1: 0.555
+  C2: 0.833
+  C3M: -0.6
+  C3P: 1.0
+  SIGK: 2.0
+  SIGP: 2.0

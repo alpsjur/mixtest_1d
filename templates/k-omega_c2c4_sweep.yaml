@@ -1,0 +1,27 @@
+sweep:
+  id: k-omega closure c2 x c4 sensitivity (GLS.C2 vs structure.c4)
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/k-omega_mixing_timescale.yaml
+
+  # Companion to templates/gen_c2c4_sweep.yaml, using the k-omega closure
+  # (configs/variants/k-omega.yaml: P=-1, M=0.5, N=-1, CMU0=0.5477, C1=0.555,
+  # C2=0.833 default, C3M=-0.6, C3P=1.0, SIGK=SIGP=2.0 -- Warner et al. 2005
+  # Table 1 / Umlauf & Burchard 2003), to test whether the c2/c4 dependence
+  # of t*_mix found for the GEN closure carries over to a closure with a
+  # very different psi-equation background (different P/M/N exponents and
+  # SIGK/SIGP diffusion Schmidt numbers), not just a different C1/C2 pair.
+  #
+  # GLS.C2 grid identical to the gen sweep (same 5 values) for direct
+  # comparison. structure.c4 grid uses the same 5 fractions of *this*
+  # closure's GLS.C1=0.555 (0.1,0.3,0.55,0.8,1.0 * 0.555), since c4 must
+  # stay <= GLS.C1 (see notes/mixing_timescale_analysis.md section 4.3) and
+  # k-omega's C1 is about half of gen's.
+  parameters:
+    structure.c4: [0.0555, 0.1665, 0.30525, 0.444, 0.555]   # fractions of GLS.C1=0.555
+    GLS.C2: [0.52, 0.833, 1.22, 1.6, 1.92]
+
+  run_name_template: "kom_c2c4_c2{GLS.C2}_c4{structure.c4}"
+
+  output_dir: "sweeps/k-omega_c2c4"
+
+  ntimes_margin: 4.0
