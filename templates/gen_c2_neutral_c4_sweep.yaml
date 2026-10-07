@@ -1,0 +1,30 @@
+sweep:
+  id: gen closure C2 sensitivity at the theoretically neutral c4=C1 point
+  base_config: configs/baseline.yaml
+  apply_config: configs/variants/mixing_timescale.yaml
+
+  # Follow-up to notes/c2_c4_closure_dependence.md, testing the hypothesis
+  # (Rennau et al. 2012) that the stationary mixing-coefficient expression
+  #
+  #   Gamma = (c1-c2)/(c3-c1) + (c4-c1)/(c3-c1) * Pd/eps
+  #
+  # has TWO terms: a structure-independent background term that is
+  # positive iff c2 > c1 (since c3 < c1 always), and a structure term
+  # that vanishes exactly at c4 = c1 (the "neutral point"). Fixing
+  # structure.c4 == GLS.C1 here kills the second term identically, so any
+  # remaining c2-dependence of the empirical mixing time t*_mix must come
+  # from the first, structure-independent term -- i.e. should flip sign
+  # (collapse vs mix) right at GLS.C2 == GLS.C1, not at the closure's
+  # "own" literature C2.
+  #
+  # GLS.C1 = 1.0 for the gen closure (baseline.yaml). C2 grid is fine and
+  # straddles C1=1.0 from well below to well above.
+  parameters:
+    GLS.C2: [0.70, 0.85, 0.95, 1.00, 1.05, 1.15, 1.30, 1.60, 1.92]
+    structure.c4: [1.0]   # == GLS.C1, the neutral point
+
+  run_name_template: "gen_c2neutral_c2{GLS.C2}"
+
+  output_dir: "sweeps/gen_c2_neutral"
+
+  ntimes_margin: 2.5
