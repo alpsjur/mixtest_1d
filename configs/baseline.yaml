@@ -5,6 +5,16 @@ files:
   grd: mixtest_1d_grd.nc
   ini: mixtest_1d_ini.nc
   his: mixtest_1d_his.nc
+  frc: mixtest_1d_frc.nc   # surface wind stress (sustr/svstr); always generated
+                           # (zero by default) since ANA_SMFLUX is undefined --
+                           # see tools/make_frc.py and roms-related/Include/mixtest_1d.h
+
+# Optional: non-zero surface wind stress (kinematic, m2/s2). Absent/zero by
+# default -- every existing experiment in this repo is unaffected.
+# forcing:
+#   sustr_tau0: 0.0
+#   svstr_tau0: 0.0
+#   dt_frc: <seconds>  # forcing snapshot spacing; defaults to the whole run
 
 grid:
   Lm: 10

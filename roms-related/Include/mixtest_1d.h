@@ -48,7 +48,8 @@
 
 
 /* ANALYTICAL */
-#define ANA_SMFLUX        /* will add this as file input later */
+#undef  ANA_SMFLUX        /* now read from FRCNAME (tools/make_frc.py) --
+                              see notes/surface_mixing_synergy.md */
 #define ANA_STFLUX
 #define ANA_SSFLUX
 #define ANA_BTFLUX
