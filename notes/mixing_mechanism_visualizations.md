@@ -73,6 +73,26 @@ afterward (initial GLS spin-up artifact); axis limits are set from
 percentiles excluding that frame so the meaningful later-time structure
 remains visible.
 
+## 4. `figures/gamma_hovmoller.png` — where/when is the local mixing coefficient largest?
+
+`analysis/gamma_hovmoller.py`. A static depth-time heatmap of the local
+diagnosed mixing coefficient `Gamma(z,t) = -B(z,t)/epsilon(z,t)` itself
+(not just its two ingredients separately, as in panel 2 above, nor the
+single bulk/epsilon-weighted number from
+`notes/gamma_observational_check.md`). Cells where `epsilon` is below the
+20th percentile are masked grey (the ratio is numerically meaningless
+there — both numerator and denominator are near zero). The colour scale
+is annotated with the Schultze et al. (2020) 8-14% observational band for
+direct visual comparison.
+
+**Finding**: diagnosed Γ is **well above** the observational band (often
+saturating the ±0.3 colour limit) along the active mixing front for both
+geometries, consistent with the bulk-Γ numbers in
+`notes/gamma_observational_check.md` — this reinforces that visually, not
+just as a single summary statistic: the overshoot is a persistent feature
+across the whole active mixing region and most of the simulated period,
+not an artifact of how the bulk average was computed.
+
 ## Reproduction
 
 ```bash
@@ -82,4 +102,5 @@ mamba activate roms   # velocity-shear-bodyforce branch, roms + mixtest_1d
 python analysis/mixing_race_animation.py        # -> figures/mixing_race.gif
 python analysis/dissipation_hovmoller.py        # -> figures/dissipation_hovmoller.png
 python analysis/mixing_mechanism_animation.py   # -> figures/mixing_mechanism.gif
+python analysis/gamma_hovmoller.py              # -> figures/gamma_hovmoller.png
 ```
