@@ -66,6 +66,7 @@ structure:
   depth_zero_below: 1.0e+9 # set to a large number to keep full column non-zero
   CD: 0.63
   c4: 0.44           # strong mixing
+  ramp: 0            # ramp-up length of structure drag/mixing (time-steps); 0 = no ramp
 
 bodyforce:
   mode: uniform       # "uniform" (U0/V0 everywhere) or "profile" (depth-varying, from profile_file)
