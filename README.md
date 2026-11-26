@@ -48,6 +48,7 @@ mixtest_1d/
 │   ├── run_tests.py           # Test runner (auto-discovers test_*.py)
 │   ├── test_UV_BODYFORCE.py   # Validates body-force driven acceleration
 │   ├── test_STRUCTURE_DRAG.py # Validates quadratic structure drag
+│   ├── test_STRUCTURE_RAMP.py # Validates cosine ramp-up of structure drag (STR_RAMP)
 │   └── test_STRUCTURE_PRODUCTION.py  # Validates TKE production by structures
 ├── utils/
 │   └── utils.py               # Shared utilities (YAML I/O, ROMS metrics, dataset loader)
@@ -195,4 +196,5 @@ Each test verifies one physical mechanism against an analytical solution:
 | `test_UV_BODYFORCE` | Uniform body force → linear acceleration u(t) = F·t | All grid points match u_analytical with rtol=1e-5 |
 | `test_UV_BODYFORCE_PROFILE` | Body force profile with dampening → u(t, z) | All grid points match u_analytical with rtol=2e-2 (reduced tolerance due to mixing-reduced shear) |
 | `test_STRUCTURE_DRAG` | Uniform body force balanced by structure drag → u(t) = √(F/α)·tanh(t√(Fα)) | All grid points match u_analytical with rtol=1e-4 |
+| `test_STRUCTURE_RAMP` | Structure drag ramped up with a cosine factor (STR_RAMP) → du/dt = F − f(t)·α·u² | All grid points match the integrated ODE with rtol=1e-3; ramp influence decays after the ramp |
 | `test_STRUCTURE_PRODUCTION` | Structure TKE production balances dissipation in steady state | Domain-integrated ε matches Pd within 2% |
